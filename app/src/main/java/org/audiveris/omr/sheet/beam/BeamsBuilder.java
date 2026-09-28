@@ -1662,8 +1662,11 @@ public class BeamsBuilder
                 0.7,
                 "Low minimum height for a beam or hook, specified as ratio of typical beam");
 
+        // Arabic fork: 1.8 (upstream 1.4). On a blurred 100 DPI scan a beam's ink spreads: the
+        // page's typical beam measured 10 px and its beams 14-17 px, so every beam of a system
+        // was refused and its eighths were read as quarters (ya-habibi-taala).
         private final Constant.Ratio maxHeightRatioHigh = new Constant.Ratio(
-                1.4,
+                1.8,
                 "High maximum height for a beam or hook, specified as ratio of typical beam");
 
         private final Constant.Ratio cornerMarginRatio = new Constant.Ratio(

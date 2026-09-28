@@ -36,8 +36,6 @@ import org.audiveris.omr.glyph.Shape;
 import static org.audiveris.omr.glyph.Shape.C_CLEF;
 import static org.audiveris.omr.glyph.Shape.F_CLEF;
 import static org.audiveris.omr.glyph.Shape.G_CLEF;
-import static org.audiveris.omr.glyph.Shape.G_CLEF_8VA;
-import static org.audiveris.omr.glyph.Shape.G_CLEF_8VB;
 import static org.audiveris.omr.glyph.Shape.PERCUSSION_CLEF;
 import static org.audiveris.omr.run.Orientation.VERTICAL;
 import org.audiveris.omr.run.RunTable;
@@ -108,12 +106,15 @@ public class ClefBuilder
      * All possible clef symbols at beginning of staff: all but small clefs.
      * Octave bass clefs are reported to be extremely
      * <a href="http://en.wikipedia.org/wiki/Clef#Octave_clefs">rare</a>.
+     * <p>
+     * Arabic fork: octave treble clefs are left out too. No score of this repertoire uses one,
+     * and the bar number printed above a system's clef ("6", "11") joined the clef as an
+     * "8": the whole system was then read an octave high. On photos, a smudge under the clef
+     * did the same an octave low.
      */
     private static final EnumSet<Shape> HEADER_CLEF_SHAPES = EnumSet.of(
             F_CLEF,
             G_CLEF,
-            G_CLEF_8VA,
-            G_CLEF_8VB,
             C_CLEF,
             PERCUSSION_CLEF);
 

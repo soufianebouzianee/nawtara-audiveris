@@ -283,14 +283,17 @@ public class InterFactory
                 return MeasureRepeatInter.create(glyph, shape, grade, closestStaff); // Staff is OK
 
             // Clefs
-            case G_CLEF:
-            case G_CLEF_SMALL:
             case G_CLEF_8VA:
             case G_CLEF_8VB:
-            case F_CLEF:
-            case F_CLEF_SMALL:
             case F_CLEF_8VA:
             case F_CLEF_8VB:
+                // Arabic fork: never an octave clef, as in ClefBuilder: a clef and a number by it.
+                return null;
+
+            case G_CLEF:
+            case G_CLEF_SMALL:
+            case F_CLEF:
+            case F_CLEF_SMALL:
             case C_CLEF:
             case PERCUSSION_CLEF:
                 return ClefInter.createValid(glyph, shape, grade, closestStaff); // Staff is OK
@@ -909,14 +912,17 @@ public class InterFactory
                 return new MetronomeInter(GRADE);
 
             // Clefs
-            case G_CLEF:
-            case G_CLEF_SMALL:
             case G_CLEF_8VA:
             case G_CLEF_8VB:
-            case F_CLEF:
-            case F_CLEF_SMALL:
             case F_CLEF_8VA:
             case F_CLEF_8VB:
+                // Arabic fork: never an octave clef, as in ClefBuilder: a clef and a number by it.
+                return null;
+
+            case G_CLEF:
+            case G_CLEF_SMALL:
+            case F_CLEF:
+            case F_CLEF_SMALL:
             case C_CLEF:
             case PERCUSSION_CLEF:
                 return new ClefInter(shape, GRADE);

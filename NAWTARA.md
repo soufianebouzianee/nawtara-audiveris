@@ -27,6 +27,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-09-23 | A scanned or photographed half-flat recognised by the slash through its stem |
 | 2026-09-24 | Half-flats read in key signatures; a barline no longer mistaken for a key sign |
 | 2026-09-25 | Flat key signatures refused because of a half-flat's bowl are retried; a promoted key sign keeps its pitch; headless start without GTK on Linux |
+| 2026-09-28 | Octave treble clefs no longer read (a bar number beside the clef was taken for the 8); beams accepted up to 1.8 times the typical beam height (blurred scans); a system that restates no key keeps the key in force; a doubtful system clef that disagrees with the page's clear treble clef is replaced by it |
 
 Files modified or added (all under `app/`):
 
@@ -35,6 +36,9 @@ Files modified or added (all under `app/`):
 - `app/src/main/java/org/audiveris/omr/glyph/ShapeSet.java`
 - `app/src/main/java/org/audiveris/omr/score/MusicXML.java`
 - `app/src/main/java/org/audiveris/omr/score/PartwiseBuilder.java`
+- `app/src/main/java/org/audiveris/omr/sheet/beam/BeamsBuilder.java`
+- `app/src/main/java/org/audiveris/omr/sheet/clef/ClefBuilder.java`
+- `app/src/main/java/org/audiveris/omr/sheet/header/HeadersStep.java`
 - `app/src/main/java/org/audiveris/omr/sheet/SheetStub.java`
 - `app/src/main/java/org/audiveris/omr/sheet/key/KeyBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/key/KeyExtractor.java`

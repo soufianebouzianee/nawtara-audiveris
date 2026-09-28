@@ -1749,6 +1749,14 @@ public class PartwiseBuilder
                 return;
             }
 
+            if (global) {
+                for (int index = 0; index < current.measure.getPart().getStaves().size(); index++) {
+                    current.keyInters.put(index, keySignature);
+                }
+            } else {
+                current.keyInters.put(keySignature.getStaff().getIndexInPart(), keySignature);
+            }
+
             final Key key = factory.createKey();
 
             if (keySignature.isNonTraditional()) {
@@ -1828,52 +1836,12 @@ public class PartwiseBuilder
                     processKey(key, false); // global: false
                 }
             }
-        } else {
-            // No key signature in measure: this is meaningful only at beginning of staff
-            if (isFirst.measure) {
-                processKeyVoid();
-            }
         }
-    }
-
-    //----------------//
-    // processKeyVoid //
-    //----------------//
-    /**
-     * Process a lack of key signature at system start.
-     */
-    private void processKeyVoid ()
-    {
-        try {
-            logger.debug("processKeyVoid");
-
-            final Key key = factory.createKey();
-            key.setFifths(new BigInteger("0"));
-
-            // Is this new?
-            final int staffCount = current.measure.getPart().getStaves().size();
-            boolean isNew = false;
-
-            for (int index = 0; index < staffCount; index++) {
-                Key currentKey = current.keys.get(index);
-
-                if ((currentKey != null) && !areEqual(currentKey, key)) {
-                    isNew = true;
-
-                    break;
-                }
-            }
-
-            if (isNew) {
-                getAttributes().getKey().add(key);
-
-                for (int index = 0; index < staffCount; index++) {
-                    current.keys.put(index, key);
-                }
-            }
-        } catch (Exception ex) {
-            logger.warn("Error in processKeyVoid in {}", current.page, ex);
-        }
+        // Arabic fork: a system that starts with no key signature keeps the key in force, and
+        // no key is written for it. Upstream wrote a key of no accidentals (processKeyVoid), but
+        // here it is a key the page prints and the reading missed (bent-chalabiya, aziza), or
+        // one a hand-written page prints only on its first system (tahona). A real change to a
+        // key of no accidentals prints naturals, which are read as a key signature.
     }
 
     //--------------------//
@@ -1887,6 +1855,7 @@ public class PartwiseBuilder
         current.logicalPart = logicalPart;
         current.pmPart = pmPart;
         current.keys.clear();
+        current.keyInters.clear();
 
         // Delegate to children the filling of measures
         logger.debug("Populating {}", logicalPart);
@@ -2375,6 +2344,12 @@ public class PartwiseBuilder
                     HeadInter head = (HeadInter) note;
                     KeyInter effectiveKey = current.measure.getKeyBefore(staff);
                     BigDecimal alter;
+
+                    if (effectiveKey == null) {
+                        // Arabic fork: a system with no key signature of its own plays the key
+                        // in force, fractional ones included.
+                        effectiveKey = current.keyInters.get(staff.getIndexInPart());
+                    }
 
                     if (effectiveKey != null) {
                         alter = head.getAlterationValue(effectiveKey);
@@ -3895,6 +3870,9 @@ public class PartwiseBuilder
         ScorePartwise.Part.Measure pmMeasure;
 
         final TreeMap<Integer, Key> keys = new TreeMap<>();
+
+        /** Arabic fork: the last key signature read on each staff of the part. */
+        final TreeMap<Integer, KeyInter> keyInters = new TreeMap<>();
 
         Voice voice;
 

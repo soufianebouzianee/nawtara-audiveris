@@ -638,7 +638,14 @@ public class BeamsBuilder
             final double topJitter = structure.computeJitter(lines.get(0), TOP);
             final double botJitter = structure.computeJitter(lines.get(lines.size() - 1), BOTTOM);
             final double meanJitter = 0.5 * (topJitter + botJitter);
-            distImpact = 1 - (meanJitter / params.maxJitterRatio);
+            // Arabic fork: a glyph longer than any hook may have a more ragged border. On a
+            // blurred scan a short slanted beam measured 2.4% jitter and was refused, leaving
+            // its eighths read as quarters (ghanni-li-shwaya-shwaya). Head-sized blobs keep the
+            // strict limit: relaxed for them too, they became false beams and hooks.
+            final double maxJitter = (structure.getGlyph().getWidth() > itemParams.maxHookWidth)
+                    ? params.maxLongJitterRatio
+                    : params.maxJitterRatio;
+            distImpact = 1 - (meanJitter / maxJitter);
         } catch (Exception ex) {
             logger.debug("Error computing beam jitter {} {}", ex.toString(), structure);
 
@@ -1745,6 +1752,10 @@ public class BeamsBuilder
                 0.02,
                 "Maximum border jitter ratio");
 
+        private final Constant.Ratio maxLongJitterRatio = new Constant.Ratio(
+                0.04,
+                "Maximum border jitter ratio for a glyph wider than a hook");
+
         private final Constant.Ratio maxBeltBlackRatio = new Constant.Ratio(
                 0.4,
                 "Maximum ratio of black pixels around beam");
@@ -2212,6 +2223,8 @@ public class BeamsBuilder
 
         final double maxJitterRatio;
 
+        final double maxLongJitterRatio;
+
         final double maxBeltBlackRatio;
 
         final double minCoreBlackRatio;
@@ -2252,6 +2265,7 @@ public class BeamsBuilder
             maxBorderSlopeGap = constants.maxBorderSlopeGap.getValue();
             maxDistanceToBorder = scale.toPixelsDouble(constants.maxDistanceToBorder);
             maxJitterRatio = constants.maxJitterRatio.getValue();
+            maxLongJitterRatio = constants.maxLongJitterRatio.getValue();
             maxBeltBlackRatio = constants.maxBeltBlackRatio.getValue();
             minCoreBlackRatio = constants.minCoreBlackRatio.getValue();
             minExtBlackRatio = constants.minExtBlackRatio.getValue();

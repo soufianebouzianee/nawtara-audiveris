@@ -28,6 +28,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-09-24 | Half-flats read in key signatures; a barline no longer mistaken for a key sign |
 | 2026-09-25 | Flat key signatures refused because of a half-flat's bowl are retried; a promoted key sign keeps its pitch; headless start without GTK on Linux |
 | 2026-09-28 | Octave treble clefs no longer read (a bar number beside the clef was taken for the 8); beams accepted up to 1.8 times the typical beam height (blurred scans); a system that restates no key keeps the key in force; a doubtful system clef that disagrees with the page's clear treble clef is replaced by it |
+| 2026-10-04 | Ledgers one interline from the staff are no longer discarded when note heads skew the page's ledger statistics (scans); short slanted beams with a ragged border accepted (blurred scans); a page no longer fails when a beamed head has no stem on one side |
 
 Files modified or added (all under `app/`):
 
@@ -42,6 +43,8 @@ Files modified or added (all under `app/`):
 - `app/src/main/java/org/audiveris/omr/sheet/SheetStub.java`
 - `app/src/main/java/org/audiveris/omr/sheet/key/KeyBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/key/KeyExtractor.java`
+- `app/src/main/java/org/audiveris/omr/sheet/ledger/LedgersPostAnalysis.java`
+- `app/src/main/java/org/audiveris/omr/sheet/stem/BeamLinker.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/InterFactory.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/SymbolsBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/AbstractPitchedInter.java`

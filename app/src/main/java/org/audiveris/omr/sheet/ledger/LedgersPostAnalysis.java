@@ -246,6 +246,21 @@ public class LedgersPostAnalysis
                     .getValue() * popDeltaBelow.getStandardDeviation();
         }
 
+        // A ledger one interline from its reference is always plausible: note head slices
+        // just outside the staff (about 0.75 interline away) can drag the page range below
+        // the true ledgers, which then were discarded and their notes lost.
+        final double margin = constants.minDeltaMargin.getValue();
+
+        if (minDeltaAboveRatio != null) {
+            minDeltaAboveRatio = Math.min(minDeltaAboveRatio, 1 - margin);
+            maxDeltaAboveRatio = Math.max(maxDeltaAboveRatio, 1 + margin);
+        }
+
+        if (minDeltaBelowRatio != null) {
+            minDeltaBelowRatio = Math.min(minDeltaBelowRatio, 1 - margin);
+            maxDeltaBelowRatio = Math.max(maxDeltaBelowRatio, 1 + margin);
+        }
+
         if (popHeight.getCardinality() > 0) {
             minHeightRatio = popHeight.getMeanValue() + constants.minHeightSigmaCoeff.getValue()
                     * popHeight.getStandardDeviation();
@@ -348,6 +363,10 @@ public class LedgersPostAnalysis
                 "none",
                 1,
                 "Coeff for standard deviation on maxDelta");
+
+        private final Constant.Ratio minDeltaMargin = new Constant.Ratio(
+                0.15,
+                "Delta range always covers one interline plus or minus this margin");
 
         private final Constant.Double minHeightSigmaCoeff = new Constant.Double(
                 "none",

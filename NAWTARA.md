@@ -30,6 +30,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-09-28 | Octave treble clefs no longer read (a bar number beside the clef was taken for the 8); beams accepted up to 1.8 times the typical beam height (blurred scans); a system that restates no key keeps the key in force; a doubtful system clef that disagrees with the page's clear treble clef is replaced by it |
 | 2026-10-04 | Ledgers one interline from the staff are no longer discarded when note heads skew the page's ledger statistics (scans); short slanted beams with a ragged border accepted (blurred scans); a page no longer fails when a beamed head has no stem on one side |
 | 2026-10-07 | A key signature whose signs were all lost (a flat joined to the clef, a half-flat not recognised) is read again with each sign cropped to the pitch the clef gives it, kept only when its first sign reads clearly and at least two signs are found; a half-flat there is recognised by its slash on the page; a weak rest that matches the page's confident rests in size and height on the staff is kept |
+| 2026-10-07 (2) | A half-flat in a bar is linked to the note at its own pitch, looked for from its bowl as well as from half its height (a step off only beside a ledger note); a glyph the classifier reads confidently as a rest or a natural is not taken for a half-flat |
 
 Files modified or added (all under `app/`):
 
@@ -59,6 +60,7 @@ Files modified or added (all under `app/`):
 - `app/src/test/java/org/audiveris/omr/score/MusicXMLTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/SymbolsBuilderTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/SymbolsStepTest.java`
+- `app/src/test/java/org/audiveris/omr/sig/inter/AlterLinkPointTest.java`
 - `app/src/test/java/org/audiveris/omr/sig/inter/ArabicKeyShapeTest.java`
 
 Everything else is Audiveris as published upstream at the commit above.

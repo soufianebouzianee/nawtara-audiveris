@@ -501,6 +501,26 @@ public class SymbolsBuilderTest
         assertFalse(SymbolsBuilder.isHalfFlatOnPage(null, box, glyph, IL));
     }
 
+    @Test
+    public void aGlyphReadAsARestIsNoHalfFlat ()
+    {
+        // sekka-tawila: a quarter rest left of a C passed the half-flat topology.
+        final org.audiveris.omr.classifier.Evaluation rest = new org.audiveris.omr.classifier.Evaluation(
+                org.audiveris.omr.glyph.Shape.QUARTER_REST, 0.8);
+        final org.audiveris.omr.classifier.Evaluation flat = new org.audiveris.omr.classifier.Evaluation(
+                org.audiveris.omr.glyph.Shape.FLAT, 0.8);
+
+        assertTrue(SymbolsBuilder.isReadAsRest(new org.audiveris.omr.classifier.Evaluation[]{rest, flat}));
+        assertFalse(SymbolsBuilder.isReadAsRest(new org.audiveris.omr.classifier.Evaluation[]{flat, rest}));
+        assertFalse(SymbolsBuilder.isReadAsRest(new org.audiveris.omr.classifier.Evaluation[0]));
+        // ahwak's natural on B, read NATURAL at 0.999, is no half-flat.
+        assertTrue(SymbolsBuilder.isReadAsRest(new org.audiveris.omr.classifier.Evaluation[]{
+                new org.audiveris.omr.classifier.Evaluation(org.audiveris.omr.glyph.Shape.NATURAL, 0.999)}));
+        // la-enta-habibi's real C half-flat, read weakly as a 32nd rest, stays a half-flat.
+        assertFalse(SymbolsBuilder.isReadAsRest(new org.audiveris.omr.classifier.Evaluation[]{
+                new org.audiveris.omr.classifier.Evaluation(org.audiveris.omr.glyph.Shape.ONE_32ND_REST, 0.32)}));
+    }
+
     private static ByteProcessor blank (int width,
                                         int height)
     {

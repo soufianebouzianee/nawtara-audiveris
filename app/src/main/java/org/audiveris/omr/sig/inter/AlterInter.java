@@ -299,13 +299,25 @@ public class AlterInter
         final int xGapMax = scale.toPixels(AlterHeadRelation.getXOutGapMaximum(profile));
         final int yGapMax = scale.toPixels(AlterHeadRelation.getYGapMaximum(profile));
 
-        // Accid ref point is on accid right side and precise y depends on accid shape
+        // Accid ref point is on accid right side and precise y depends on accid shape.
+        // A half-flat is a flat with a slash: its note is level with the bowl, three quarters
+        // down, like a flat's. Taken at half height, the slash lifting the glyph put the point
+        // above the note, and the link failed on emta-hataref's A half-flats: the half-flat,
+        // left abnormal, was removed and the classifier's weak flat played instead.
         Rectangle accidBox = getBounds();
-        Point accidPt = new Point(
-                accidBox.x + accidBox.width,
-                ((shape != Shape.FLAT) && (shape != Shape.DOUBLE_FLAT)) ? (accidBox.y
-                        + (accidBox.height / 2)) : (accidBox.y + ((3 * accidBox.height) / 4)));
+        Point accidPt = linkPoint(shape, accidBox);
         Rectangle luBox = new Rectangle(accidPt.x, accidPt.y - yGapMax, xGapMax, 2 * yGapMax);
+
+        // Half-flats differ by font in where their bowl sits (emta-hataref's three quarters
+        // down, bekram-el-loulou's half way): look from both, and take the note whose pitch
+        // is the sign's own, or a step from it.
+        final boolean halfFlat = (shape == Shape.QUARTER_FLAT) && (getPitch() != null);
+
+        if (halfFlat) {
+            final int halfWay = accidBox.y + (accidBox.height / 2);
+            luBox.add(new Point(accidPt.x, halfWay - yGapMax));
+        }
+
         List<Inter> notes = Inters.intersectedInters(systemHeads, GeoOrder.BY_ABSCISSA, luBox);
 
         if (!notes.isEmpty()) {
@@ -325,6 +337,27 @@ public class AlterInter
                 double yGap = Math.abs(notePt.y - accidPt.y);
                 AlterHeadRelation rel = new AlterHeadRelation();
                 rel.setOutGaps(scale.pixelsToFrac(xGap), scale.pixelsToFrac(yGap), profile);
+
+                if (halfFlat) {
+                    // A note at the sign's own pitch; beside a ledger note, whose sign measures
+                    // a step away (la-enta-habibi's C half-flats), one a step off. In the staff
+                    // a step off is refused: on chunk-1 scans it let nine misread signs make
+                    // false quarter tones (ah-ya-helw, saalouni-el-nas) and took no real one.
+                    // The step is the gap compared, so the exact pitch is preferred.
+                    if (!(head instanceof HeadInter note)) {
+                        continue;
+                    }
+
+                    final int steps = Math.abs(note.getIntegerPitch() - (int) Math.rint(getPitch()));
+                    final boolean ledger = Math.abs(note.getIntegerPitch()) >= 6;
+
+                    if ((steps > 1) || ((steps == 1) && !ledger)) {
+                        continue;
+                    }
+
+                    rel.setOutGaps(scale.pixelsToFrac(xGap), 0, profile);
+                    yGap = steps - 2; // below any measured gap: exact pitch best, a step next
+                }
 
                 if (rel.getGrade() >= rel.getMinGrade()) {
                     if ((bestRel == null) || (bestYGap > yGap)) {
@@ -394,6 +427,28 @@ public class AlterInter
     }
 
     //~ Static Methods -----------------------------------------------------------------------------
+
+    //-----------//
+    // linkPoint //
+    //-----------//
+    /**
+     * Where an accidental meets its note: its right side, three quarters down for a flat,
+     * double flat or half-flat (the bowl), half way down for the others.
+     *
+     * @param shape the accidental shape
+     * @param box   the accidental bounds
+     * @return the point a note head's left side is measured from
+     */
+    static Point linkPoint (Shape shape,
+                            Rectangle box)
+    {
+        final boolean flatLike = (shape == Shape.FLAT) || (shape == Shape.DOUBLE_FLAT)
+                || (shape == Shape.QUARTER_FLAT);
+
+        return new Point(
+                box.x + box.width,
+                flatLike ? (box.y + ((3 * box.height) / 4)) : (box.y + (box.height / 2)));
+    }
 
     //--------------//
     // alterationOf //

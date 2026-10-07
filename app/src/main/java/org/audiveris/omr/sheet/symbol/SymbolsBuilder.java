@@ -36,6 +36,7 @@ import org.audiveris.omr.glyph.GlyphLink;
 import org.audiveris.omr.glyph.Glyphs;
 import org.audiveris.omr.glyph.Grades;
 import org.audiveris.omr.glyph.Shape;
+import org.audiveris.omr.glyph.ShapeSet;
 import org.audiveris.omr.math.GeoUtil;
 import org.audiveris.omr.sheet.Picture;
 import org.audiveris.omr.sheet.Scale;
@@ -301,9 +302,14 @@ public class SymbolsBuilder
     {
         final boolean classifiedFlat = (evals.length > 0) && (evals[0].shape == Shape.FLAT);
         final Shape candidate = getArabicAccidentalShape(glyph, staff, classifiedFlat);
-        if (classifiedFlat) {
+        if (classifiedFlat && (System.getenv("AUDIVERIS_ARABIC_DUMP") != null)) {
+            // For the dump only: the page's ink beside the stem, to label in-bar flats by.
+            final ByteProcessor page = sheet.getPicture().getSource(Picture.SourceKey.GRAY);
+            final StemInk ink = (page == null) ? null
+                    : inkBesideStem(page, glyph.getBounds(), glyph.getBuffer(),
+                            staff.getSpecificInterline());
             dumpGlyph("body", staff, staff.pitchPositionOf(glyph.getCenter2D()), glyph,
-                    Shape.FLAT, candidate, null, false);
+                    Shape.FLAT, candidate, ink, false);
         }
 
         if (candidate == null) {
@@ -311,7 +317,7 @@ public class SymbolsBuilder
         }
 
         if (candidate == Shape.QUARTER_FLAT) {
-            if (hasConfidentStandardSharp(evals)) {
+            if (hasConfidentStandardSharp(evals) || isReadAsRest(evals)) {
                 return null;
             }
         }
@@ -774,6 +780,30 @@ public class SymbolsBuilder
     {
         return (evals.length > 0) && (evals[0].shape == Shape.SHARP);
     }
+
+    //--------------//
+    // isReadAsRest //
+    //--------------//
+    /**
+     * Whether the classifier reads the glyph confidently as a rest. A quarter rest is about
+     * as tall and narrow as a half-flat and passes its topology: sekka-tawila's, just left of a
+     * C, became a half-flat on that C once half-flats were linked at their bowl. Its rests read
+     * 0.98 and more; la-enta-habibi's real C half-flat, which this must keep, a 32nd rest at 0.32.
+     * A natural passes it too: ahwak's natural on B (bar 22 of the chunk-1 scan), read NATURAL
+     * at 0.999, played B half-flat, then once linked at the bowl A half-flat.
+     *
+     * @param evals the classifier's evaluations, best first
+     * @return true when the best one is a rest or a natural at REST_CONFIDENCE or more
+     */
+    static boolean isReadAsRest (Evaluation[] evals)
+    {
+        return (evals.length > 0)
+                && (ShapeSet.Rests.contains(evals[0].shape) || (evals[0].shape == Shape.NATURAL))
+                && (evals[0].grade >= REST_CONFIDENCE);
+    }
+
+    /** Classifier grade from which a rest reading vetoes a half-flat (see isReadAsRest). */
+    private static final double REST_CONFIDENCE = 0.5;
 
     //-------------------------//
     // hasQuarterFlatTopology //

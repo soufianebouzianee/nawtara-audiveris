@@ -710,6 +710,15 @@ public class KeyBuilder
     private static class Constants
             extends ConstantSet
     {
+        private final Constant.Integer rescueMinSigns = new Constant.Integer(
+                "signs",
+                2,
+                "Signs a key cropped to the clef's pitches must hold to be kept");
+
+        private final Constant.Ratio rescueMinGrade = new Constant.Ratio(
+                0.5,
+                "Minimum grade of a key's first sign cropped to its pitch, when no sign was found");
+
         private final Constant.String vipStaves = new Constant.String(
                 "",
                 "(Debug) Comma-separated values of VIP staff IDs");
@@ -2277,6 +2286,15 @@ public class KeyBuilder
                     // NOTA: Some slices may still be empty at this point...
                 }
 
+                // Every slice still empty: the signs may be there yet unreadable as cut, a flat
+                // joined to the clef's curl or a half-flat the classifier does not know.
+                if ((roi.getLastValidSlice() == null)
+                        && !rescueByPitch(staff.getCompetingClefs(starts.get(0)))) {
+                    destroy();
+
+                    return;
+                }
+
                 // Check compatibility with active clef(s) if any
                 clefs.addAll(staff.getCompetingClefs(starts.get(0)));
 
@@ -2298,6 +2316,89 @@ public class KeyBuilder
                     }
                 }
             }
+        }
+
+        //---------------//
+        // rescueByPitch //
+        //---------------//
+        /**
+         * Crop each slice to the pitch where the best competing clef puts its sign, and
+         * read it again, if the key's first sign then reads clearly.
+         * <p>
+         * On grey screen captures (saalouni-elnas, 2026-10-07) four staves of five lost their
+         * key: the B flat touched the clef's curl, so its glyph came out 70-82 pixels tall
+         * for a 51 pixel flat, and the E half-flat beside it read as nothing. With no sign
+         * found the key failed the clef check, and the line played every B and E natural.
+         * The one staff that kept its key was saved by this same crop, in fillMissingAlters,
+         * which only runs once some sign is found.
+         * The first sign is demanded clearly (rescueMinGrade), and the key is kept only with
+         * rescueMinSigns signs: on a keyless page a time signature's top digit, cropped to the
+         * key's first pitch, read as a flat at 0.35 to 0.5 and was made a key alone
+         * (hal-sayara-mesh-am-temshi and kan-agmal-yom, chunk-1 renders).
+         *
+         * @param competing the clefs active at the key start
+         * @return true when a key was rescued, false when the key should be dropped
+         */
+        private boolean rescueByPitch (List<ClefInter> competing)
+        {
+            ClefInter clef = null;
+
+            for (ClefInter c : competing) {
+                if ((c.getKind() != ClefKind.PERCUSSION)
+                        && ((clef == null) || (c.getGrade() > clef.getGrade()))) {
+                    clef = c;
+                }
+            }
+
+            if ((clef == null) || (roi.size() < constants.rescueMinSigns.getValue())) {
+                return false;
+            }
+
+            final Set<Shape> shapes = Collections.singleton(keyShape);
+            final KeySlice first = roi.get(0);
+            first.setPitchRect(clef, keyShape, params.stdGlyphHeight);
+
+            if (extractor.extractAlter(
+                    roi,
+                    peaks,
+                    first,
+                    shapes,
+                    constants.rescueMinGrade.getValue(),
+                    true) == null) {
+                return false;
+            }
+
+            logger.debug("Staff#{} key rescued by pitch under {}", getId(), clef);
+
+            // The later signs are where the first one's key puts them; a half-flat among them
+            // the classifier does not know is taken by its shape.
+            extractor.setHalfFlatShapes(keyShape == FLAT);
+
+            try {
+                for (int i = 1; i < roi.size(); i++) {
+                    final KeySlice slice = roi.get(i);
+                    slice.setPitchRect(clef, keyShape, params.stdGlyphHeight);
+                    extractor.extractAlter(
+                            roi,
+                            peaks,
+                            slice,
+                            shapes,
+                            Grades.keyAlterMinGrade2,
+                            true);
+                }
+            } finally {
+                extractor.setHalfFlatShapes(false);
+            }
+
+            int signs = 0;
+
+            for (KeySlice slice : roi) {
+                if (slice.getAlter() != null) {
+                    signs++;
+                }
+            }
+
+            return signs >= constants.rescueMinSigns.getValue();
         }
 
         //---------------//

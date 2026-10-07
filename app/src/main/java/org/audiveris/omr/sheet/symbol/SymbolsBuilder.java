@@ -913,6 +913,48 @@ public class SymbolsBuilder
         return (upperSpan >= Math.max(5, (width * 2) / 5)) && (longColumns <= 3);
     }
 
+    //------------------//
+    // isHalfFlatOnPage //
+    //------------------//
+    /**
+     * Whether a key sign the classifier did not read is a half-flat, by its shape and by the
+     * page around it: a flat's size, a slash right of its stem's top (hasSlashRightOfStem), and
+     * ink crossing to the stem's left on the grey page (inkBesideStem, SLASH_PRESENT).
+     * <p>
+     * Looser than isSlashedFlat, which demands the closed bowl and the slash across the stem in
+     * the glyph itself: saalouni-elnas's half-flats, bold and grey on a phone capture of a
+     * screen, have neither intact, and cropped to their pitch they keep only stem and slash.
+     * A note's flag has that shape too, but nothing left of its stem; the page tells them apart.
+     * It is only asked of a sign whose key's first sign read clearly (KeyBuilder.rescueByPitch).
+     *
+     * @param page      the grey page, or null
+     * @param box       the glyph's bounds on the page
+     * @param buffer    the glyph raster
+     * @param interline staff interline, in pixels
+     * @return true when the glyph is a half-flat
+     */
+    public static boolean isHalfFlatOnPage (ByteProcessor page,
+                                            Rectangle box,
+                                            ByteProcessor buffer,
+                                            int interline)
+    {
+        if ((page == null) || (buffer == null) || (interline <= 0)) {
+            return false;
+        }
+
+        final double widthRatio = buffer.getWidth() / (double) interline;
+        final double heightRatio = buffer.getHeight() / (double) interline;
+
+        if ((widthRatio < 0.5) || (widthRatio > 1.8) || (heightRatio < 2.2) || (heightRatio > 3.6)
+                || !hasSlashRightOfStem(buffer)) {
+            return false;
+        }
+
+        final StemInk ink = inkBesideStem(page, box, buffer, interline);
+
+        return (ink != null) && (ink.leftShare() >= SLASH_PRESENT);
+    }
+
     //---------------------//
     // hasSlashRightOfStem //
     //---------------------//

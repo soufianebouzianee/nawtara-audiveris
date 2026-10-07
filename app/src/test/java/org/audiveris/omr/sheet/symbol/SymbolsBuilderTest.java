@@ -380,6 +380,127 @@ public class SymbolsBuilderTest
                 24));
     }
 
+    //--------------------------------------------------------------------------------------------//
+    // A key's later half-flat, cropped to its pitch (saalouni-elnas, a phone capture of a screen) //
+    //--------------------------------------------------------------------------------------------//
+    /** Staff 1's E half-flat as the pitch crop leaves it: stem and slash, no bowl. */
+    private static final String[] CROPPED_HALF_FLAT = {
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###.......####.",
+            "###......######",
+            "###.....#######",
+            "###....########",
+            "###...#########",
+            "###..########..",
+            "############...",
+            "###########....",
+            "##########.....",
+            "#########......",
+            "########.......",
+            "######.........",
+            "######.........",
+            "####...........",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "####...........",
+            "####...........",
+            "####...........",
+            "####...........",
+            "####...........",
+            "####...........",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "###............",
+            "####...........",
+            "####...........",
+            "####...........",
+            "####...........",
+            "####...........",
+            "####...........",
+            "####...........",
+            ".#.............",
+    };
+
+    private static ByteProcessor raster (String[] rows)
+    {
+        final ByteProcessor buffer = blank(rows[0].length(), rows.length);
+
+        for (int y = 0; y < rows.length; y++) {
+            for (int x = 0; x < rows[y].length(); x++) {
+                if (rows[y].charAt(x) == '#') {
+                    buffer.set(x, y, FOREGROUND);
+                }
+            }
+        }
+
+        return buffer;
+    }
+
+    /** A staff page with the glyph at (100, 30); with its slash crossing left of the stem. */
+    private static ByteProcessor pageWith (ByteProcessor glyph,
+                                           boolean crossing)
+    {
+        final ByteProcessor page = blank(220, 170);
+
+        for (int line = 0; line < 5; line++) {
+            horizontal(page, 0, 219, 40 + (line * IL));
+            horizontal(page, 0, 219, 41 + (line * IL));
+        }
+
+        for (int y = 0; y < glyph.getHeight(); y++) {
+            for (int x = 0; x < glyph.getWidth(); x++) {
+                if (glyph.get(x, y) != BACKGROUND) {
+                    page.set(100 + x, 30 + y, FOREGROUND);
+                }
+            }
+        }
+
+        if (crossing) {
+            thickDiagonal(page, 92, 48, 101, 41, 2); // the slash's left end, cut off the crop
+        }
+
+        return page;
+    }
+
+    @Test
+    public void aCroppedHalfFlatIsKnownByItsSlashOnThePage ()
+    {
+        final ByteProcessor glyph = raster(CROPPED_HALF_FLAT);
+        final Rectangle box = new Rectangle(100, 30, glyph.getWidth(), glyph.getHeight());
+
+        assertFalse(SymbolsBuilder.isSlashedFlat(glyph));
+        assertTrue(SymbolsBuilder.isHalfFlatOnPage(pageWith(glyph, true), box, glyph, IL));
+    }
+
+    @Test
+    public void aFlagIsNoHalfFlat ()
+    {
+        // The same stem and stroke with nothing left of the stem is a note's flag.
+        final ByteProcessor glyph = raster(CROPPED_HALF_FLAT);
+        final Rectangle box = new Rectangle(100, 30, glyph.getWidth(), glyph.getHeight());
+
+        assertFalse(SymbolsBuilder.isHalfFlatOnPage(pageWith(glyph, false), box, glyph, IL));
+        assertFalse(SymbolsBuilder.isHalfFlatOnPage(null, box, glyph, IL));
+    }
+
     private static ByteProcessor blank (int width,
                                         int height)
     {

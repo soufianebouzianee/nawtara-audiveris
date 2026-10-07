@@ -108,6 +108,9 @@ public class KeyExtractor
      */
     private final List<Candidate> fallbacks = new ArrayList<>();
 
+    /** Whether a slice may take a sign by its half-flat shape alone (KeyBuilder.rescueByPitch). */
+    private boolean halfFlatShapes;
+
     //~ Constructors -------------------------------------------------------------------------------
 
     /**
@@ -430,6 +433,20 @@ public class KeyExtractor
         }
     }
 
+    //-------------------//
+    // setHalfFlatShapes //
+    //-------------------//
+    /**
+     * Let a slice take, as a flat, a glyph the classifier did not read but that has a
+     * half-flat's slash on the page. Only for signs after a first sign that read clearly.
+     *
+     * @param halfFlatShapes true to accept such glyphs
+     */
+    public void setHalfFlatShapes (boolean halfFlatShapes)
+    {
+        this.halfFlatShapes = halfFlatShapes;
+    }
+
     //--------------------//
     // retrieveCandidates //
     //--------------------//
@@ -731,7 +748,12 @@ public class KeyExtractor
             // comes in at the lowest grade a key item may have, and fills only a slice no glyph
             // read as a flat claims.
             if (!kept && targetShapes.contains(Shape.FLAT)
-                    && SymbolsBuilder.isSlashedFlat(glyph.getBuffer())) {
+                    && (SymbolsBuilder.isSlashedFlat(glyph.getBuffer())
+                    || (halfFlatShapes && SymbolsBuilder.isHalfFlatOnPage(
+                            sheet.getPicture().getSource(Picture.SourceKey.GRAY),
+                            glyph.getBounds(),
+                            glyph.getBuffer(),
+                            sheet.getInterline())))) {
                 final Evaluation eval = new Evaluation(Shape.FLAT, minGrade / Grades.intrinsicRatio);
                 logger.debug("glyph#{} width:{} slashed flat {}", glyph.getId(), glyph.getWidth(), eval);
                 keepFallback(glyph, parts, eval);

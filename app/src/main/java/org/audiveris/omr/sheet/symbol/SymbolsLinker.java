@@ -362,7 +362,9 @@ public class SymbolsLinker
         linkFermatas();
         linkGraces();
         linkAugmentationDots();
+        StemFlagFragments.resolve(sig);
         linkTuplets();
+        TupletFragments.resolve(sig);
         linkOctaveShifts();
         linkNumbers();
 

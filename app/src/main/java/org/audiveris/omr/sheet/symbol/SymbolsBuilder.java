@@ -22,6 +22,7 @@
 package org.audiveris.omr.sheet.symbol;
 
 import static org.audiveris.omr.image.PixelSource.BACKGROUND;
+import static org.audiveris.omr.image.PixelSource.FOREGROUND;
 
 import org.audiveris.omr.classifier.Classifier;
 import org.audiveris.omr.classifier.Evaluation;
@@ -38,6 +39,8 @@ import org.audiveris.omr.glyph.Grades;
 import org.audiveris.omr.glyph.Shape;
 import org.audiveris.omr.glyph.ShapeSet;
 import org.audiveris.omr.math.GeoUtil;
+import org.audiveris.omr.run.Orientation;
+import org.audiveris.omr.run.RunTableFactory;
 import org.audiveris.omr.sheet.Picture;
 import org.audiveris.omr.sheet.Scale;
 import org.audiveris.omr.sheet.Sheet;
@@ -50,6 +53,8 @@ import org.audiveris.omr.sig.inter.Inter;
 import org.audiveris.omr.sig.inter.KeyAlterInter;
 import org.audiveris.omr.sig.inter.KeyInter;
 import org.audiveris.omr.sig.inter.SmallChordInter;
+import org.audiveris.omr.sig.inter.StemInter;
+import org.audiveris.omr.sig.inter.SlurInter;
 import org.audiveris.omr.sig.relation.AlterHeadRelation;
 import org.audiveris.omr.sig.relation.Exclusion;
 import org.audiveris.omr.sig.relation.KeyAltersRelation;
@@ -183,6 +188,7 @@ public class SymbolsBuilder
         watch.start("getSymbolsGlyphs");
 
         final List<Glyph> glyphs = getSymbolsGlyphs(optionalsMap);
+        recoverCurveSplitRests(glyphs);
 
         // Formalize glyphs relationships in a system-level graph
         watch.start("buildLinks");
@@ -202,6 +208,54 @@ public class SymbolsBuilder
         if (constants.printWatch.isSet()) {
             watch.print();
         }
+    }
+
+    /** Restore an eighth rest only when its complete pre-curve ink confirms the reading. */
+    private void recoverCurveSplitRests (List<Glyph> glyphs)
+    {
+        final List<Glyph> recovered = new ArrayList<>();
+        for (Glyph seed : new ArrayList<>(glyphs)) {
+            if (recovered.stream().anyMatch(g -> SplitRestRecovery.containsInk(g, seed))) {
+                continue;
+            }
+            final Staff staff = system.getClosestStaff(seed.getCenter2D());
+            if ((staff == null) || staff.isTablature()
+                    || (Math.abs(staff.pitchPositionOf(seed.getCentroid())) > 2)) {
+                continue;
+            }
+            final Evaluation[] neckVotes = classifier.evaluate(seed, system, 1,
+                    Grades.symbolMinGrade, EnumSet.of(Classifier.Condition.CHECKED));
+            if ((neckVotes.length == 0) || (neckVotes[0].shape != Shape.QUARTER_REST)) {
+                continue;
+            }
+            final Glyph complete = SplitRestRecovery.recover(
+                    sheet.getPicture().getSource(Picture.SourceKey.NO_STAFF), seed,
+                    staff.getSpecificInterline());
+            if (complete == null) {
+                continue;
+            }
+            final Evaluation[] votes = classifier.evaluate(complete, system, 1,
+                    0.8, EnumSet.of(Classifier.Condition.CHECKED));
+            if ((votes.length == 0) || (votes[0].shape != Shape.EIGHTH_REST)) {
+                continue;
+            }
+            final Glyph registered = sheet.getGlyphIndex().registerOriginal(complete);
+            final Inter rest = factory.create(votes[0], registered, staff);
+            if (rest == null) {
+                continue;
+            }
+            // A curve wholly inside this connected, confidently classified rest is its hook.
+            // Never remove a manual curve or one extending outside the recovered symbol.
+            for (Inter inter : new ArrayList<>(system.getSig().inters(SlurInter.class))) {
+                if (!inter.isManual() && complete.getBounds().contains(inter.getBounds())) {
+                    inter.remove();
+                }
+            }
+            recovered.add(registered);
+            logger.info("Recovered curve-split eighth rest {} from glyph#{}", rest, seed.getId());
+        }
+        glyphs.removeIf(seed -> recovered.stream()
+                .anyMatch(whole -> SplitRestRecovery.containsInk(whole, seed)));
     }
 
     //---------------//
@@ -231,12 +285,41 @@ public class SymbolsBuilder
             return;
         }
 
-        final Evaluation[] evals = classifier.evaluate(
+        Evaluation[] evals = classifier.evaluate(
                 glyph,
                 system,
                 constants.maxEvaluationCount.getValue(),
                 Grades.symbolMinGrade,
                 EnumSet.of(Classifier.Condition.CHECKED));
+
+        // A ledger line can detach a natural's lower stem and leave a flat-shaped glyph.
+        // Require staggered stems on the original page AND a confident natural classifier vote.
+        if ((evals.length > 0) && (evals[0].shape == Shape.FLAT)
+                && (Math.abs(closestStaff.pitchPositionOf(flatReferencePoint(glyph.getBounds()))) >= 6)) {
+            final Rectangle box = glyph.getBounds();
+            final ByteProcessor recovered = ledgerNaturalBuffer(
+                    sheet.getPicture().getSource(Picture.SourceKey.GRAY), box,
+                    closestStaff.getSpecificInterline());
+            if (System.getenv("AUDIVERIS_ARABIC_DUMP") != null) {
+                logger.info("Ledger glyph#{} recovered={}", glyph.getId(), recovered != null);
+            }
+            if (recovered != null) {
+                final Glyph rebuilt = new Glyph(box.x, box.y,
+                        new RunTableFactory(Orientation.VERTICAL).createTable(recovered));
+                final Evaluation[] votes = classifier.evaluate(rebuilt, system,
+                        constants.maxEvaluationCount.getValue(), Grades.symbolMinGrade,
+                        EnumSet.of(Classifier.Condition.CHECKED));
+                if (System.getenv("AUDIVERIS_ARABIC_DUMP") != null) {
+                    logger.info("Ledger glyph#{} vote={}", glyph.getId(),
+                            votes.length > 0 ? votes[0] : null);
+                }
+                if ((votes.length > 0) && (votes[0].shape == Shape.NATURAL)
+                        && (votes[0].grade >= REST_CONFIDENCE)) {
+                    glyph = sheet.getGlyphIndex().registerOriginal(rebuilt);
+                    evals = votes;
+                }
+            }
+        }
 
         final SIGraph sig = system.getSig();
         final List<Inter> createdInters = new ArrayList<>();
@@ -251,11 +334,15 @@ public class SymbolsBuilder
         final Shape arabicAccidental = getArabicAccidental(glyph, closestStaff, evals);
 
         if (arabicAccidental != null) {
-            final AlterInter alter = AlterInter.create(
-                    glyph,
-                    arabicAccidental,
-                    0.95,
-                    closestStaff);
+            final Double bowlY = wideQuarterFlatBowlY(glyph.getBuffer(),
+                    closestStaff.getSpecificInterline());
+            final double bowlPitch = bowlY != null
+                    ? closestStaff.pitchPositionOf(new java.awt.geom.Point2D.Double(
+                            glyph.getBounds().getCenterX(), glyph.getTop() + bowlY)) : 0;
+            final AlterInter alter = arabicAccidental == Shape.QUARTER_FLAT && bowlY != null
+                    ? new AlterInter(glyph, arabicAccidental, 0.95, closestStaff,
+                            (double) Math.rint(bowlPitch), bowlPitch)
+                    : AlterInter.create(glyph, arabicAccidental, 0.95, closestStaff);
             sig.addVertex(alter);
             final List<Inter> systemHeads = sig.inters(HeadInter.class);
             Collections.sort(systemHeads, org.audiveris.omr.sig.inter.Inters.byAbscissa);
@@ -301,7 +388,24 @@ public class SymbolsBuilder
                                       Evaluation[] evals)
     {
         final boolean classifiedFlat = (evals.length > 0) && (evals[0].shape == Shape.FLAT);
-        final Shape candidate = getArabicAccidentalShape(glyph, staff, classifiedFlat);
+        Shape candidate = getArabicAccidentalShape(glyph, staff, classifiedFlat);
+        if ((evals.length > 0) && (evals[0].shape == Shape.SHARP)
+                && isQuarterSharpOnPage(sheet.getPicture().getSource(Picture.SourceKey.GRAY),
+                        glyph.getBounds(), glyph.getBuffer(), staff.getSpecificInterline())) {
+            candidate = Shape.QUARTER_SHARP;
+        }
+        if ((candidate == null) && !isReadAsRest(evals)
+                && isNarrowQuarterSharpOnPage(
+                        sheet.getPicture().getSource(Picture.SourceKey.GRAY),
+                        glyph.getBounds(), glyph.getBuffer(), staff.getSpecificInterline())) {
+            candidate = Shape.QUARTER_SHARP;
+        }
+        if ((candidate == null) && !hasConfidentStandardSharp(evals) && !isReadAsRest(evals)
+                && isFragmentedQuarterFlatOnPage(
+                        sheet.getPicture().getSource(Picture.SourceKey.GRAY),
+                        glyph.getBounds(), glyph.getBuffer(), staff.getSpecificInterline())) {
+            candidate = Shape.QUARTER_FLAT;
+        }
         if (classifiedFlat && (System.getenv("AUDIVERIS_ARABIC_DUMP") != null)) {
             // For the dump only: the page's ink beside the stem, to label in-bar flats by.
             final ByteProcessor page = sheet.getPicture().getSource(Picture.SourceKey.GRAY);
@@ -312,6 +416,13 @@ public class SymbolsBuilder
                     Shape.FLAT, candidate, ink, false);
         }
 
+        final Double wideBowlY = candidate == null
+                ? wideQuarterFlatBowlY(glyph.getBuffer(), staff.getSpecificInterline()) : null;
+        if (wideBowlY != null && wideQuarterFlatOnPage(
+                sheet.getPicture().getSource(Picture.SourceKey.BINARY), glyph.getBounds(),
+                glyph.getBuffer(), staff.getSpecificInterline())) {
+            candidate = Shape.QUARTER_FLAT;
+        }
         if (candidate == null) {
             return null;
         }
@@ -327,9 +438,9 @@ public class SymbolsBuilder
         final int profile = system.getProfile();
         final int xGapMax = scale.toPixels(AlterHeadRelation.getXOutGapMaximum(profile));
         final int yGapMax = scale.toPixels(AlterHeadRelation.getYGapMaximum(profile));
-        final int accidentalY = (candidate == Shape.QUARTER_FLAT)
-                ? box.y + ((3 * box.height) / 4)
-                : box.y + (box.height / 2);
+        final int accidentalY = wideBowlY != null ? box.y + (int) Math.rint(wideBowlY)
+                : (candidate == Shape.QUARTER_FLAT)
+                        ? box.y + ((3 * box.height) / 4) : box.y + (box.height / 2);
         final Point accidentalPoint = new Point(box.x + box.width, accidentalY);
 
         for (Inter inter : system.getSig().inters(HeadInter.class)) {
@@ -343,6 +454,8 @@ public class SymbolsBuilder
             final int xGap = notePoint.x - accidentalPoint.x;
             final int yGap = Math.abs(notePoint.y - accidentalPoint.y);
 
+            if (wideBowlY != null && head.getIntegerPitch() != (int) Math.rint(
+                    staff.pitchPositionOf(accidentalPoint))) { continue; }
             if ((xGap >= 0) && (xGap <= xGapMax) && (yGap <= yGapMax)) {
                 return candidate;
             }
@@ -382,6 +495,7 @@ public class SymbolsBuilder
             final int searchRight = keyBox.x + keyBox.width + ((5 * interline) / 2);
             AlterInter candidate = null;
             boolean reconstructedCandidate = false;
+            final List<Inter> recoveredOwners = new ArrayList<>();
 
             for (Inter inter : sig.inters(AlterInter.class)) {
                 if ((inter instanceof KeyAlterInter) || (inter.getStaff() != staff)) {
@@ -456,6 +570,11 @@ public class SymbolsBuilder
                 }
             }
 
+            if ((candidate == null) && (baseShape == Shape.FLAT)) {
+                candidate = recoverOwnedHeaderSharp(staff, keyBox, recoveredOwners);
+                reconstructedCandidate = candidate != null;
+            }
+
             if (candidate == null) {
                 continue;
             }
@@ -482,6 +601,11 @@ public class SymbolsBuilder
                 continue;
             }
 
+            // Only relinquish the false notes after both full-ink classification and
+            // the normal mixed-key pitch guard have accepted their replacement.
+            for (Inter owner : recoveredOwners) {
+                owner.remove();
+            }
             final KeyAlterInter keyAlter = new KeyAlterInter(candidate);
             keyAlter.setPitch((double) expectedPitch);
             candidate.remove();
@@ -494,6 +618,57 @@ public class SymbolsBuilder
             key.invalidateCache();
             logger.info("Extended mixed header key with {} at pitch {}", keyAlter, expectedPitch);
         }
+    }
+
+    /** Recover a mixed-key sharp whose two crossbars were consumed as noteheads. */
+    private AlterInter recoverOwnedHeaderSharp (Staff staff, Rectangle keyBox,
+                                                List<Inter> owners)
+    {
+        final SIGraph sig = system.getSig();
+        final int interline = staff.getSpecificInterline();
+        final List<HeadInter> heads = new ArrayList<>();
+        for (Inter inter : sig.inters(HeadInter.class)) {
+            if ((inter.getStaff() == staff) && (inter.getShape() == Shape.NOTEHEAD_BLACK)
+                    && MixedKeyOwnership.inSlot(inter.getBounds(), keyBox, interline)) {
+                heads.add((HeadInter) inter);
+            }
+        }
+        if (heads.size() != 2) { return null; }
+
+        final Set<StemInter> stems = new LinkedHashSet<>();
+        for (HeadInter head : heads) {
+            stems.addAll(head.getStems());
+        }
+        if (stems.isEmpty()) { return null; }
+        for (StemInter stem : stems) {
+            // Never steal a stem from music outside this bounded header candidate.
+            if ((stem.getGlyph() == null) || !stem.getBeams().isEmpty()
+                    || !heads.containsAll(stem.getHeads())
+                    || !MixedKeyOwnership.inSlot(stem.getGlyph().getBounds(), keyBox, interline)) {
+                return null;
+            }
+        }
+        final List<Glyph> fragments = new ArrayList<>();
+        for (Glyph glyph : system.getGroupedGlyphs(GlyphGroup.SYMBOL)) {
+            if (MixedKeyOwnership.inSlot(glyph.getBounds(), keyBox, interline)) {
+                fragments.add(glyph);
+            }
+        }
+        final Glyph compound = MixedKeyOwnership.reassemble(fragments,
+                heads.stream().map(Inter::getGlyph).toList(),
+                stems.stream().map(Inter::getGlyph).toList(), keyBox, interline);
+        if (compound == null) { return null; }
+        final Evaluation[] evals = classifier.evaluate(compound, system,
+                constants.maxEvaluationCount.getValue(), Grades.symbolMinGrade,
+                EnumSet.of(Classifier.Condition.CHECKED));
+        // This fallback must win the normal classifier, not merely appear among alternatives.
+        if ((evals.length == 0) || (evals[0].shape != Shape.SHARP)) { return null; }
+        final Glyph registered = sheet.getGlyphIndex().registerOriginal(compound);
+        final AlterInter candidate = AlterInter.create(registered, Shape.SHARP, evals[0].grade, staff);
+        sig.addVertex(candidate);
+        owners.addAll(heads);
+        owners.addAll(stems);
+        return candidate;
     }
 
     //----------------------------------//
@@ -610,9 +785,12 @@ public class SymbolsBuilder
         // candidate raster is the ordinary Western natural sign (two staggered stems), including
         // the signs that cancel B-flat in "Ah ya Hilu". Automatic promotion made those notes 50
         // cents sharp. QUARTER_SHARP remains supported by the model, data structures and MusicXML
-        // exporter, but it must arrive from an explicit classifier result rather than this local
-        // fallback.
+        // exporter. A separate SHARP-gated path checks one-stem topology against the original
+        // page; this general geometry fallback must never promote naturals.
 
+        // Wider crossed signs can be genuine half-flats, but their shifted bowl reference
+        // attached ghanni scan bars 36/40 to B-flat instead of A. Keep the width gate until
+        // pitch and attachment can be established independently of this tall slash.
         if ((widthRatio >= 0.65) && (widthRatio <= 1.8) && (heightRatio >= 2.2)
                 && (heightRatio <= 3.6) && hasQuarterFlatTopology(buffer)) {
             return Shape.QUARTER_FLAT;
@@ -642,6 +820,12 @@ public class SymbolsBuilder
 
             final boolean classifiedFlat = keyAlter.getShape() == Shape.FLAT;
             Shape candidate = getArabicAccidentalShape(glyph, keyAlter.getStaff(), classifiedFlat);
+            if ((keyAlter.getShape() == Shape.SHARP)
+                    && isQuarterSharpOnPage(sheet.getPicture().getSource(Picture.SourceKey.GRAY),
+                            glyph.getBounds(), glyph.getBuffer(),
+                            keyAlter.getStaff().getSpecificInterline())) {
+                candidate = Shape.QUARTER_SHARP;
+            }
             StemInk ink = null;
             final boolean first = isFirstOfKey(keyAlter);
 
@@ -804,6 +988,359 @@ public class SymbolsBuilder
 
     /** Classifier grade from which a rest reading vetoes a half-flat (see isReadAsRest). */
     private static final double REST_CONFIDENCE = 0.5;
+
+    /** A flat's bowl, rather than its clipped bounding-box centre, determines its pitch. */
+    static Point2D flatReferencePoint (Rectangle box)
+    {
+        return new Point2D.Double(box.getCenterX(), box.y + box.height * 0.75);
+    }
+
+    /** Recover a lower natural stem only inside the original accidental's horizontal extent. */
+    static ByteProcessor ledgerNaturalBuffer (ByteProcessor page, Rectangle box, int interline)
+    {
+        if ((page == null) || (interline <= 0) || (box.width < interline * 0.45)
+                || (box.width > interline * 1.1) || (box.height < interline * 1.3)
+                || (box.height > interline * 2.5)) { return null; }
+        final int height = box.height + interline;
+        // Keep crossbars: across this narrow crop they resemble short staff lines.
+        final boolean[][] ink = new boolean[height][box.width];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < box.width; x++) {
+                final int px = box.x + x, py = box.y + y;
+                ink[y][x] = (px >= 0) && (py >= 0) && (px < page.getWidth())
+                        && (py < page.getHeight()) && (page.get(px, py) < INK_LEVEL);
+            }
+        }
+        final ByteProcessor b = new ByteProcessor(box.width, height);
+        b.setValue(BACKGROUND); b.fill();
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < box.width; x++) {
+                if (ink[y][x]) { b.set(x, y, FOREGROUND); }
+            }
+        }
+        if (longStemClusters(b, 0.55) != 2) { return null; }
+        int first = -1, last = -1;
+        for (int x = 0; x < box.width; x++) {
+            int count = 0;
+            for (int y = 0; y < height; y++) { if (ink[y][x]) { count++; } }
+            if (count >= height * 0.55) {
+                if (first < 0) { first = x; }
+                last = x;
+            }
+        }
+        // Ignore isolated horizontal staff/ledger ink when finding stem endpoints.
+        final int[] left = longestVerticalStroke(b, first);
+        final int[] right = longestVerticalStroke(b, last);
+        return (left[0] <= height * 0.10) && (right[0] >= height * 0.15)
+                && (right[0] <= height * 0.45) && (left[1] <= height * 0.85)
+                && (right[1] >= height * 0.90) ? b : null;
+    }
+
+    private static int[] longestVerticalStroke (ByteProcessor buffer, int x)
+    {
+        int start = -1, bestStart = -1, bestEnd = -1;
+        for (int y = 0; y <= buffer.getHeight(); y++) {
+            final boolean dark = (y < buffer.getHeight()) && (buffer.get(x, y) < INK_LEVEL);
+            if (dark && (start < 0)) { start = y; }
+            if (!dark && (start >= 0)) {
+                if (y - start > bestEnd - bestStart + 1) {
+                    bestStart = start; bestEnd = y - 1;
+                }
+                start = -1;
+            }
+        }
+        return new int[] {bestStart, bestEnd};
+    }
+
+    /** One central long stem and two transverse bars, only used for classified sharps. */
+    static boolean hasQuarterSharpTopology (ByteProcessor buffer, double interline)
+    {
+        if ((buffer == null) || (interline <= 0)) {
+            return false;
+        }
+        final int w = buffer.getWidth();
+        final int h = buffer.getHeight();
+        if ((w < 6) || (w / interline < 0.6) || (w / interline > 1.5)
+                || (h / interline < 1.8) || (h / interline > 3.6)
+                || (longStemClusters(buffer, 0.65) != 1)) {
+            return false;
+        }
+        int left = w;
+        int right = -1;
+        for (int x = 0; x < w; x++) {
+            int ink = 0;
+            for (int y = 0; y < h; y++) {
+                if (buffer.get(x, y) < INK_LEVEL) { ink++; }
+            }
+            if (ink >= h * 0.65) { left = Math.min(left, x); right = x; }
+        }
+        final double centre = (left + right) / (2.0 * w);
+        if ((centre < 0.35) || (centre > 0.65)) { return false; }
+        int bands = 0;
+        int rows = 0;
+        boolean previous = false;
+        for (int y = 0; y < h; y++) {
+            int before = 0;
+            int after = 0;
+            for (int x = 0; x < w; x++) {
+                if (buffer.get(x, y) < INK_LEVEL) {
+                    if (x < left) { before++; }
+                    if (x > right) { after++; }
+                }
+            }
+            final boolean bar = (before >= w * 0.20) && (after >= w * 0.20);
+            if (bar) { rows++; if (!previous) { bands++; } }
+            previous = bar;
+        }
+        return (bands == 2) && (rows >= h * 0.12) && (rows <= h * 0.45);
+    }
+
+    /** Narrow left-bar half-sharp style; unlike a rest it has a full-height straight stem. */
+    static boolean hasNarrowQuarterSharpTopology (ByteProcessor buffer, double interline)
+    {
+        if ((buffer == null) || (interline <= 0)) { return false; }
+        final int w = buffer.getWidth(), h = buffer.getHeight();
+        if ((w < 6) || (w / interline < 0.4) || (w / interline >= 0.6)
+                || (h / interline < 2.2) || (h / interline > 3.6)
+                || (longStemClusters(buffer, 0.65) != 1)) { return false; }
+        final int[] stem = stemColumns(buffer);
+        if ((stem == null) || ((stem[0] + stem[1]) / (2.0 * w) < 0.35)
+                || ((stem[0] + stem[1]) / (2.0 * w) > 0.75)) {
+            return false;
+        }
+        int bands = 0, rows = 0, first = h, last = -1;
+        boolean previous = false;
+        for (int y = 0; y < h; y++) {
+            int before = 0;
+            for (int x = 0; x < stem[0]; x++) {
+                if (buffer.get(x, y) < INK_LEVEL) { before++; }
+            }
+            final boolean bar = before >= w * 0.25;
+            if (bar) {
+                rows++;
+                first = Math.min(first, y);
+                last = y;
+                if (!previous) { bands++; }
+            }
+            previous = bar;
+        }
+        return (bands == 2) && (rows >= h * 0.12) && (rows <= h * 0.55)
+                && (first >= h * 0.12) && (first < h * 0.45)
+                && (last > h * 0.55) && (last <= h * 0.88);
+    }
+
+    /** The narrow glyph is insufficient: original ink must show the same two bars and one stem. */
+    static boolean isNarrowQuarterSharpOnPage (ByteProcessor page, Rectangle box,
+                                              ByteProcessor glyph, double interline)
+    {
+        if ((page == null) || !hasNarrowQuarterSharpTopology(glyph, interline)
+                || (box.width != glyph.getWidth()) || (box.height != glyph.getHeight())) {
+            return false;
+        }
+        final boolean[][] ink = inkWithoutStaffLines(page, box.x, box.y,
+                box.width, box.height, (int) Math.rint(interline));
+        final ByteProcessor original = new ByteProcessor(box.width, box.height);
+        original.setValue(BACKGROUND);
+        original.fill();
+        for (int y = 0; y < box.height; y++) {
+            for (int x = 0; x < box.width; x++) {
+                if (ink[y][x]) { original.set(x, y, FOREGROUND); }
+            }
+        }
+        return (longStemClusters(original, 0.50) == 1)
+                && hasNarrowQuarterSharpTopology(original, interline);
+    }
+
+    /** Confirm the wide sign's stem and slash in original, pre-removal binary ink. */
+    static boolean wideQuarterFlatOnPage (ByteProcessor page, Rectangle box,
+                                           ByteProcessor glyph, double interline)
+    {
+        Double bowlY = wideQuarterFlatBowlY(glyph, interline);
+        if (page == null || bowlY == null || box.width != glyph.getWidth()
+                || box.height != glyph.getHeight() || box.x < 0 || box.y < 0
+                || box.x + box.width > page.getWidth()
+                || box.y + box.height > page.getHeight()) { return false; }
+        boolean[][] ink = inkWithoutStaffLines(page, box.x, box.y,
+                box.width, box.height, (int) Math.rint(interline));
+        ByteProcessor original = new ByteProcessor(box.width, box.height);
+        original.setValue(BACKGROUND); original.fill();
+        for (int y=0; y<box.height; y++) for (int x=0; x<box.width; x++)
+            if (ink[y][x]) { original.set(x,y,FOREGROUND); }
+        // Staff lines can split the bowl's white interior. Pitch comes from the
+        // retained glyph bowl; original pre-removal ink must confirm its stem/slash.
+        return isSlashedFlat(original) && hasContinuousStem(original, interline)
+                && longStemClusters(original, 2.0 / 3) == 1;
+    }
+
+    /** Measure pitch from one enclosed lower bowl, independently of the upper slash. */
+    static Double wideQuarterFlatBowlY (ByteProcessor raster, double interline)
+    {
+        if (raster == null || interline <= 0) { return null; }
+        int w = raster.getWidth(), h = raster.getHeight();
+        if (w <= 1.8 * interline || w > 2.4 * interline
+                || h < 2.2 * interline || h > 3.6 * interline
+                || !isSlashedFlat(raster) || longStemClusters(raster, 2.0 / 3) != 1
+                || !hasContinuousStem(raster, interline)) { return null; }
+        int[] stem = stemColumns(raster);
+        if (stem == null) { return null; }
+        boolean[] seen = new boolean[w * h];
+        int[] queue = new int[w * h];
+        Double result = null;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int start = y * w + x;
+                if (seen[start] || raster.get(x, y) != BACKGROUND) { continue; }
+                int head = 0, tail = 0, minX = w, minY = h, maxY = 0;
+                long totalY = 0; boolean border = false;
+                queue[tail++] = start; seen[start] = true;
+                while (head < tail) {
+                    int p = queue[head++], px = p % w, py = p / w;
+                    minX = Math.min(minX, px); minY = Math.min(minY, py);
+                    maxY = Math.max(maxY, py); totalY += py;
+                    border |= px == 0 || py == 0 || px == w-1 || py == h-1;
+                    int[] next = {p-1, p+1, p-w, p+w};
+                    for (int n : next) {
+                        if (n < 0 || n >= w*h || Math.abs(n%w-px)+Math.abs(n/w-py) != 1
+                                || seen[n] || raster.get(n%w, n/w) != BACKGROUND) { continue; }
+                        seen[n] = true; queue[tail++] = n;
+                    }
+                }
+                if (!border && tail >= Math.max(8, h/3) && minX > stem[1]
+                        && minY >= h/2 && maxY < h*0.95) {
+                    if (result != null) { return null; }
+                    result = (double) totalY / tail;
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Recover a slash cut away by staff removal, within the existing glyph box and width gate.
+     * This never expands a sign into nearby note/head ink. Both the surviving glyph and the
+     * original page must retain one stem; the page must show the full crossed-flat topology.
+     * Classifier vetoes and measured-pitch/head-link checks are applied by the caller.
+     */
+    static boolean isFragmentedQuarterFlatOnPage (ByteProcessor page, Rectangle box,
+                                                 ByteProcessor glyph, double interline)
+    {
+        if ((page == null) || (glyph == null) || (interline <= 0)
+                || (box.width != glyph.getWidth()) || (box.height != glyph.getHeight())
+                || (box.width < interline * 0.65) || (box.width > interline * 1.8)
+                || (box.height < interline * 2.2) || (box.height > interline * 3.6)
+                || (longStemClusters(glyph, 2.0 / 3) != 1)
+                || hasQuarterFlatTopology(glyph)) {
+            return false;
+        }
+        final boolean[][] ink = inkWithoutStaffLines(page, box.x, box.y,
+                box.width, box.height, (int) Math.rint(interline));
+        final ByteProcessor original = new ByteProcessor(box.width, box.height);
+        original.setValue(BACKGROUND);
+        original.fill();
+        for (int y = 0; y < box.height; y++) {
+            for (int x = 0; x < box.width; x++) {
+                if (ink[y][x]) { original.set(x, y, FOREGROUND); }
+            }
+        }
+        return hasCrossedFlatTopology(original)
+                && hasContinuousStem(original, interline)
+                && hasDescendingUpperRightSlash(original);
+    }
+
+    /** The descending evidence must belong to one stroke, not separate staff/dot remnants. */
+    static boolean hasDescendingUpperRightSlash (ByteProcessor buffer)
+    {
+        final int[] stem = stemColumns(buffer);
+        if (stem == null) { return false; }
+        final int w = buffer.getWidth(), h = buffer.getHeight();
+        final int xMin = stem[1] + Math.max(2, w / 12);
+        final int yMin = (int) (h * 0.05), ySplit = (int) (h * 0.20), yMax = (int) (h * 0.35);
+        final boolean[][] seen = new boolean[h][w];
+        final int[] queue = new int[w * h];
+        for (int y = yMin; y < yMax; y++) {
+            for (int x = xMin; x < w; x++) {
+                if (seen[y][x] || (buffer.get(x, y) == BACKGROUND)) { continue; }
+                int head = 0, tail = 0;
+                queue[tail++] = y * w + x;
+                seen[y][x] = true;
+                long earlyX = 0, lateX = 0;
+                int earlyInk = 0, lateInk = 0;
+                while (head < tail) {
+                    final int pixel = queue[head++], px = pixel % w, py = pixel / w;
+                    if (py < ySplit) { earlyX += px; earlyInk++; }
+                    else { lateX += px; lateInk++; }
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            final int nx = px + dx, ny = py + dy;
+                            if ((nx < xMin) || (nx >= w) || (ny < yMin) || (ny >= yMax)
+                                    || seen[ny][nx] || (buffer.get(nx, ny) == BACKGROUND)) { continue; }
+                            seen[ny][nx] = true;
+                            queue[tail++] = ny * w + nx;
+                        }
+                    }
+                }
+                if ((earlyInk > 0) && (lateInk > 0)
+                        && ((double) earlyX / earlyInk - (double) lateX / lateInk >= w * 0.08)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** A counted stem must also span the sign, allowing only small staff-removal gaps. */
+    static boolean hasContinuousStem (ByteProcessor buffer, double interline)
+    {
+        final int gapMax = Math.max(1, (int) Math.rint(interline * 0.15));
+        final int spanMin = (buffer.getHeight() * 2) / 3;
+        for (int x = 0; x < buffer.getWidth(); x++) {
+            int start = -1;
+            int previous = -1;
+            for (int y = 0; y < buffer.getHeight(); y++) {
+                if (buffer.get(x, y) == BACKGROUND) { continue; }
+                if ((previous < 0) || ((y - previous - 1) > gapMax)) { start = y; }
+                if ((y - start + 1) >= spanMin) { return true; }
+                previous = y;
+            }
+        }
+        return false;
+    }
+
+    private static int longStemClusters (ByteProcessor buffer, double share)
+    {
+        int clusters = 0;
+        boolean previous = false;
+        for (int x = 0; x < buffer.getWidth(); x++) {
+            int ink = 0;
+            for (int y = 0; y < buffer.getHeight(); y++) {
+                if (buffer.get(x, y) < INK_LEVEL) { ink++; }
+            }
+            final boolean stem = ink >= buffer.getHeight() * share;
+            if (stem && !previous) { clusters++; }
+            previous = stem;
+        }
+        return clusters;
+    }
+
+    /** Confirm on original ink: staff removal must not hide a sharp's second stem. */
+    static boolean isQuarterSharpOnPage (ByteProcessor page, Rectangle box,
+                                         ByteProcessor glyph, double interline)
+    {
+        if ((page == null) || !hasQuarterSharpTopology(glyph, interline)) { return false; }
+        final boolean[][] ink = inkWithoutStaffLines(
+                page, box.x, box.y, box.width, box.height, (int) Math.rint(interline));
+        final ByteProcessor original = new ByteProcessor(box.width, box.height);
+        original.setValue(BACKGROUND);
+        original.fill();
+        for (int y = 0; y < box.height; y++) {
+            for (int x = 0; x < box.width; x++) {
+                if (ink[y][x]) { original.set(x, y, FOREGROUND); }
+            }
+        }
+        return (longStemClusters(original, 0.50) == 1)
+                && hasQuarterSharpTopology(original, interline);
+    }
+
 
     //-------------------------//
     // hasQuarterFlatTopology //

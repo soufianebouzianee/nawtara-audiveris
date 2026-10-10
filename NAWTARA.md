@@ -31,25 +31,39 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-10-04 | Ledgers one interline from the staff are no longer discarded when note heads skew the page's ledger statistics (scans); short slanted beams with a ragged border accepted (blurred scans); a page no longer fails when a beamed head has no stem on one side |
 | 2026-10-07 | A key signature whose signs were all lost (a flat joined to the clef, a half-flat not recognised) is read again with each sign cropped to the pitch the clef gives it, kept only when its first sign reads clearly and at least two signs are found; a half-flat there is recognised by its slash on the page; a weak rest that matches the page's confident rests in size and height on the staff is kept |
 | 2026-10-07 (2) | A half-flat in a bar is linked to the note at its own pitch, looked for from its bowl as well as from half its height (a step off only beside a ledger note); a glyph the classifier reads confidently as a rest or a natural is not taken for a half-flat |
+| 2026-10-10 | Single-stem and narrow half-sharps; naturals on ledger lines rebuilt from the page; half-flats broken by staff removal or drawn wide, pitched from their bowl; eighth rests split by curve extraction; printed triplets kept against their own fragments; short beam hooks joined by blur; staff lines followed past the projection window; mixed-key sharps taken for noteheads; augmentation dots touching ties; short sharp strokes no longer taken for barlines |
 
 Files modified or added (all under `app/`):
 
 - `app/src/main/java/org/audiveris/omr/WellKnowns.java`
+- `app/src/main/java/org/audiveris/omr/glyph/GlyphCluster.java`
 - `app/src/main/java/org/audiveris/omr/glyph/Shape.java`
 - `app/src/main/java/org/audiveris/omr/glyph/ShapeSet.java`
 - `app/src/main/java/org/audiveris/omr/score/MusicXML.java`
 - `app/src/main/java/org/audiveris/omr/score/PartwiseBuilder.java`
+- `app/src/main/java/org/audiveris/omr/sheet/SheetStub.java`
+- `app/src/main/java/org/audiveris/omr/sheet/beam/BeamHookBorders.java`
+- `app/src/main/java/org/audiveris/omr/sheet/beam/BeamStructure.java`
 - `app/src/main/java/org/audiveris/omr/sheet/beam/BeamsBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/clef/ClefBuilder.java`
+- `app/src/main/java/org/audiveris/omr/sheet/grid/BarAccidentalInk.java`
+- `app/src/main/java/org/audiveris/omr/sheet/grid/StaffProjectionRange.java`
+- `app/src/main/java/org/audiveris/omr/sheet/grid/StaffProjector.java`
 - `app/src/main/java/org/audiveris/omr/sheet/header/HeadersStep.java`
-- `app/src/main/java/org/audiveris/omr/sheet/SheetStub.java`
 - `app/src/main/java/org/audiveris/omr/sheet/key/KeyBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/key/KeyExtractor.java`
 - `app/src/main/java/org/audiveris/omr/sheet/ledger/LedgersPostAnalysis.java`
 - `app/src/main/java/org/audiveris/omr/sheet/stem/BeamLinker.java`
+- `app/src/main/java/org/audiveris/omr/sheet/symbol/DotFactory.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/InterFactory.java`
+- `app/src/main/java/org/audiveris/omr/sheet/symbol/MixedKeyOwnership.java`
+- `app/src/main/java/org/audiveris/omr/sheet/symbol/SplitRestRecovery.java`
+- `app/src/main/java/org/audiveris/omr/sheet/symbol/StemFlagFragments.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/SymbolsBuilder.java`
+- `app/src/main/java/org/audiveris/omr/sheet/symbol/SymbolsLinker.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/SymbolsStep.java`
+- `app/src/main/java/org/audiveris/omr/sheet/symbol/TiedDotRecovery.java`
+- `app/src/main/java/org/audiveris/omr/sheet/symbol/TupletFragments.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/AbstractPitchedInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/AlterInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/HeadInter.java`
@@ -57,9 +71,19 @@ Files modified or added (all under `app/`):
 - `app/src/main/java/org/audiveris/omr/sig/inter/KeyInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/SmallChordInter.java`
 - `app/src/main/java/org/audiveris/omr/text/tesseract/TesseractOrder.java`
+- `app/src/test/java/org/audiveris/omr/glyph/GlyphClusterTest.java`
 - `app/src/test/java/org/audiveris/omr/score/MusicXMLTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/beam/BeamHookBordersTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/grid/BarAccidentalInkTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/grid/StaffProjectionRangeTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/symbol/MixedKeyOwnershipTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/symbol/SplitRestRecoveryTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/symbol/StemFlagFragmentsTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/SymbolsBuilderTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/SymbolsStepTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/symbol/TiedDotRecoveryTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/symbol/TupletFragmentsTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/symbol/WideQuarterFlatBowlTest.java`
 - `app/src/test/java/org/audiveris/omr/sig/inter/AlterLinkPointTest.java`
 - `app/src/test/java/org/audiveris/omr/sig/inter/ArabicKeyShapeTest.java`
 

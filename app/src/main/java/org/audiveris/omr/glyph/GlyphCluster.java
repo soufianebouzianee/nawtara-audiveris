@@ -31,6 +31,7 @@ import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -56,6 +57,33 @@ public class GlyphCluster
 
     private static final Logger logger = LoggerFactory.getLogger(GlyphCluster.class);
 
+    /**
+     * Component order must not depend on a connectivity inspector's HashSet order.
+     * Equal-weight fragments are common after staff removal. Their evaluation order
+     * determines which overlapping key/symbol candidates survive.
+     */
+    public static final Comparator<Glyph> byReverseWeight = Comparator
+            .comparingInt(Glyph::getWeight).reversed()
+            .thenComparingInt(Glyph::getLeft)
+            .thenComparingInt(Glyph::getTop)
+            .thenComparingInt(Glyph::getWidth)
+            .thenComparingInt(Glyph::getHeight)
+            .thenComparing(GlyphCluster::compareInk);
+
+    private static int compareInk (Glyph first, Glyph second)
+    {
+        for (int y = 0; y < first.getHeight(); y++) {
+            for (int x = 0; x < first.getWidth(); x++) {
+                final int difference = Integer.compare(
+                        first.getRunTable().get(x, y), second.getRunTable().get(x, y));
+                if (difference != 0) {
+                    return difference;
+                }
+            }
+        }
+        return 0;
+    }
+
     //~ Instance fields ----------------------------------------------------------------------------
 
     /** Environment adapter. */
@@ -63,6 +91,9 @@ public class GlyphCluster
 
     /** Group, if any, to be assigned to created glyphs. */
     private final GlyphGroup group;
+
+    /** Opt-in stable traversal for key extraction; other callers retain their order. */
+    private final boolean stableOrder;
 
     //~ Constructors -------------------------------------------------------------------------------
 
@@ -75,8 +106,14 @@ public class GlyphCluster
     public GlyphCluster (GlyphAdapter adapter,
                          GlyphGroup group)
     {
+        this(adapter, group, false);
+    }
+
+    public GlyphCluster (GlyphAdapter adapter, GlyphGroup group, boolean stableOrder)
+    {
         this.adapter = adapter;
         this.group = group;
+        this.stableOrder = stableOrder;
     }
 
     //~ Methods ------------------------------------------------------------------------------------
@@ -93,8 +130,8 @@ public class GlyphCluster
 
         //TODO: we could truncate this list by discarding the smallest items
         // since a too large list would result in explosion of combinations
-        final List<Glyph> seeds = adapter.getParts();
-        Collections.sort(seeds, Glyphs.byReverseWeight);
+        final List<Glyph> seeds = new ArrayList<>(adapter.getParts());
+        if (stableOrder) { Collections.sort(seeds, byReverseWeight); }
 
         ///logger.debug("Decomposing {}", Glyphs.ids("cluster", seeds));
         for (Glyph seed : seeds) {
@@ -175,7 +212,10 @@ public class GlyphCluster
         Rectangle setBox = Glyphs.getBounds(parts);
         Set<Glyph> newConsidered = new LinkedHashSet<>(seen);
 
-        for (Glyph outlier : outliers) {
+        final List<Glyph> orderedOutliers = new ArrayList<>(outliers);
+        if (stableOrder) { orderedOutliers.sort(byReverseWeight); }
+
+        for (Glyph outlier : orderedOutliers) {
             newConsidered.add(outlier);
 
             // Check appending this atom does not make the resulting symbol too wide or too high

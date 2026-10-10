@@ -163,7 +163,7 @@ public class KeyExtractor
         system.registerGlyphs(parts, null);
 
         SingleAdapter adapter = new SingleAdapter(slice, peaks, parts, targetShapes, minGrade);
-        new GlyphCluster(adapter, null).decompose();
+        new GlyphCluster(adapter, null, true).decompose();
 
         if (slice.getEval() != null) {
             double grade = Grades.intrinsicRatio * slice.getEval().grade;
@@ -428,7 +428,7 @@ public class KeyExtractor
         }
 
         if (parts.size() > params.maxPartCount) {
-            Collections.sort(parts, Glyphs.byReverseWeight);
+            Collections.sort(parts, GlyphCluster.byReverseWeight);
             parts.retainAll(parts.subList(0, params.maxPartCount));
         }
     }
@@ -491,7 +491,7 @@ public class KeyExtractor
                     subGraph,
                     shapes,
                     Grades.keyAlterMinGrade1);
-            new GlyphCluster(adapter, null).decompose();
+            new GlyphCluster(adapter, null, true).decompose();
             logger.debug("Staff#{} set:{} trials:{}", id, set.size(), adapter.trials);
             allCandidates.addAll(adapter.candidates);
             allFallbacks.addAll(adapter.fallbacks);

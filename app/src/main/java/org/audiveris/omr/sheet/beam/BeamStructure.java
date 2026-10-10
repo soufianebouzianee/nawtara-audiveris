@@ -260,6 +260,36 @@ public class BeamStructure
         }
     }
 
+    /** A joined end hook may hide one border, while all three other borders survive. */
+    private void completeEndHookBorder (double slope, SortedMap<Double, Line2D> top,
+                                        SortedMap<Double, Line2D> bottom)
+    {
+        final boolean missingTop = top.size() == 1 && bottom.size() == 2;
+        if (!missingTop && !(top.size() == 2 && bottom.size() == 1)) { return; }
+        final SortedMap<Double, Line2D> single = missingTop ? top : bottom;
+        final SortedMap<Double, Line2D> doubleMap = missingTop ? bottom : top;
+        final Entry<Double, Line2D> base = single.entrySet().iterator().next();
+        final Entry<Double, Line2D> paired = lookupLine(
+                base.getKey() + (missingTop ? params.typicalHeight : -params.typicalHeight), doubleMap);
+        if (paired == null) { return; }
+        for (Entry<Double, Line2D> extra : doubleMap.entrySet()) {
+            if (extra.getKey().equals(paired.getKey())) { continue; }
+            final Line2D border = BeamHookBorders.missingBorder(
+                    missingTop ? base.getValue() : paired.getValue(),
+                    missingTop ? paired.getValue() : base.getValue(), extra.getValue(), missingTop,
+                    params.typicalHeight, params.minHookWidthLow, params.maxHookWidth, params.minBeamWidthLow,
+                    params.cornerMargin, constants.maxSectionSlopeGap.getValue(),
+                    params.minHeightLow, params.maxHeightHigh);
+            if (border != null) {
+                final double x = (border.getX1() + border.getX2()) / 2;
+                final double offset = LineUtil.yAtX(border, x) - LineUtil.yAtX(center, slope, x);
+                single.put(offset, border);
+                logger.info("Completed stuck end-hook border for {}", glyph);
+            }
+            break;
+        }
+    }
+
     //-----------------------//
     // computeGlobalDistance //
     //-----------------------//
@@ -417,7 +447,8 @@ public class BeamStructure
         completeBorderLines(-1, globalSlope, bottomMap, topMap);
 
         if (topMap.size() != bottomMap.size()) {
-            return null; // This should never happen!
+            completeEndHookBorder(globalSlope, topMap, bottomMap);
+            if (topMap.size() != bottomMap.size()) { return null; }
         }
 
         // Loop on beam lines

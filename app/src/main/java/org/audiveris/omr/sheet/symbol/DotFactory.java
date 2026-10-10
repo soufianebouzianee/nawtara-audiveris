@@ -22,6 +22,10 @@
 package org.audiveris.omr.sheet.symbol;
 
 import org.audiveris.omr.classifier.Evaluation;
+import org.audiveris.omr.classifier.Classifier;
+import org.audiveris.omr.classifier.ShapeClassifier;
+import org.audiveris.omr.sig.inter.SlurInter;
+import java.util.EnumSet;
 import org.audiveris.omr.constant.ConstantSet;
 import org.audiveris.omr.glyph.Glyph;
 import org.audiveris.omr.glyph.Grades;
@@ -623,15 +627,37 @@ public class DotFactory
         }
 
         final double grade = Grades.intrinsicRatio * dot.getGrade();
-        final Glyph glyph = dot.getGlyph();
-        final AugmentationDotInter aug = new AugmentationDotInter(glyph, grade);
+        Glyph glyph = dot.getGlyph();
+        AugmentationDotInter aug = new AugmentationDotInter(glyph, grade);
 
         final List<Link> links = new ArrayList<>();
         final int profile = system.getProfile();
-        final Link headLink = aug.lookupHeadLink(
+        Link headLink = aug.lookupHeadLink(
                 interFactory.getSystemHeadChords(),
                 system,
                 profile);
+        if (headLink != null && dot.getGrade() < .4) {
+            for (Inter inter : sig.inters(SlurInter.class)) {
+                SlurInter slur = (SlurInter) inter;
+                if (slur.isManual() || !slur.isTie() || slur.getHead(LEFT) != headLink.partner) continue;
+                Glyph body = TiedDotRecovery.body(glyph, slur.getBounds(), slur.isAbove(),
+                        headLink.partner.getStaff().getSpecificInterline());
+                if (body == null) continue;
+                Evaluation[] votes = ShapeClassifier.getInstance().evaluate(body, system, 1,
+                        .8, EnumSet.of(Classifier.Condition.CHECKED));
+                logger.debug("Tied dot body {} votes {}", body.getBounds(), java.util.Arrays.toString(votes));
+                if (votes.length == 0 || votes[0].shape != Shape.DOT_set) continue;
+                AugmentationDotInter refined = new AugmentationDotInter(body,
+                        Grades.intrinsicRatio * votes[0].grade);
+                Link refinedLink = refined.lookupHeadLink(interFactory.getSystemHeadChords(), system, profile);
+                if (refinedLink == null || refinedLink.partner != headLink.partner) continue;
+                glyph = system.getSheet().getGlyphIndex().registerOriginal(body);
+                refined.setGlyph(glyph);
+                aug = refined; headLink = refinedLink;
+                logger.info("Recovered tied augmentation dot {} from glyph#{}", aug, dot.getGlyph().getId());
+                break;
+            }
+        }
         links.addAll(aug.sharedHeadLinks(headLink, system));
         links.addAll(aug.lookupRestLinks(interFactory.getSystemRests(), system, profile));
 

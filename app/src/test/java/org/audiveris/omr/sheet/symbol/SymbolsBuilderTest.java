@@ -24,6 +24,133 @@ public class SymbolsBuilderTest
     //--------------------------------------------------------------------------------------------//
     private static final int IL = 20;
 
+    @Test
+    public void aWideCrossedHalfFlatNeedsIndependentPitchEvidence ()
+    {
+        final ByteProcessor b = blank(44, 52);
+        for (int x = 23; x <= 26; x++) { vertical(b, x, 0, 51); }
+        thickDiagonal(b, 0, 35, 38, 7, 2);
+        for (int y = 28; y <= 51; y++) {
+            final int edge = 27 + (51 - y) / 2;
+            horizontal(b, 27, edge, y);
+        }
+        assertTrue(SymbolsBuilder.hasCrossedFlatTopology(b));
+        assertTrue(SymbolsBuilder.getArabicAccidentalShape(b, IL) == null);
+        final ByteProcessor ordinary = blank(44, 52);
+        for (int x = 23; x <= 26; x++) { vertical(ordinary, x, 0, 51); }
+        for (int y = 28; y <= 51; y++) { horizontal(ordinary, 27, 38, y); }
+        assertTrue(SymbolsBuilder.getArabicAccidentalShape(ordinary, IL) == null);
+    }
+
+    @Test
+    public void aClippedFlatIsGatedAtItsBowlPitch ()
+    {
+        // In-rah: middle staff line y=717.8, interline 17. The centre lies above
+        // the ledger cutoff, but the bowl is the sign's actual pitch position.
+        final Rectangle box = new Rectangle(416, 751, 14, 34);
+        assertTrue(2 * (box.getCenterY() - 717.8) / 17 < 6);
+        assertTrue(2 * (SymbolsBuilder.flatReferencePoint(box).getY() - 717.8) / 17 >= 6);
+    }
+
+    @Test
+    public void detachedLowerNaturalStemCanBeRecoveredFromPage ()
+    {
+        final ByteProcessor page = blank(80, 100);
+        for (int x = 20; x <= 22; x++) { vertical(page, x, 20, 53); }
+        for (int x = 30; x <= 32; x++) { vertical(page, x, 32, 70); }
+        for (int y = 35; y <= 39; y++) { horizontal(page, 20, 32, y); }
+        for (int y = 49; y <= 53; y++) { horizontal(page, 20, 32, y); }
+        // The staff line at the crop's top must not become the right stem's start.
+        for (int y = 20; y <= 22; y++) { horizontal(page, 0, 79, y); }
+        final Rectangle box = new Rectangle(20, 20, 13, 34);
+        assertTrue(SymbolsBuilder.ledgerNaturalBuffer(page, box, 17) != null);
+        final ByteProcessor flat = blank(80, 100);
+        for (int x = 20; x <= 22; x++) { vertical(flat, x, 20, 53); }
+        for (int y = 40; y <= 53; y++) { horizontal(flat, 23, 32, y); }
+        assertTrue(SymbolsBuilder.ledgerNaturalBuffer(flat, box, 17) == null);
+        final ByteProcessor parallel = blank(80, 100);
+        for (int x : new int[] {20, 21, 30, 31}) { vertical(parallel, x, 20, 70); }
+        for (int y = 35; y <= 39; y++) { horizontal(parallel, 20, 31, y); }
+        for (int y = 49; y <= 53; y++) { horizontal(parallel, 20, 31, y); }
+        assertTrue(SymbolsBuilder.ledgerNaturalBuffer(parallel, box, 17) == null);
+        assertTrue(SymbolsBuilder.ledgerNaturalBuffer(null, box, 17) == null);
+    }
+
+    private static ByteProcessor halfSharp ()
+    {
+        final ByteProcessor b = blank(23, 68);
+        for (int x = 9; x <= 12; x++) { vertical(b, x, 0, 67); }
+        for (int y = 16; y <= 26; y++) { horizontal(b, 0, 22, y); }
+        for (int y = 42; y <= 52; y++) { horizontal(b, 0, 22, y); }
+        return b;
+    }
+
+    @Test
+    public void oneStemAndTwoBarsCanBeHalfSharp ()
+    {
+        final ByteProcessor b = halfSharp();
+        assertTrue(SymbolsBuilder.hasQuarterSharpTopology(b, IL));
+        assertTrue(SymbolsBuilder.isQuarterSharpOnPage(b, new Rectangle(0, 0, 23, 68), b, IL));
+        assertFalse(SymbolsBuilder.isQuarterSharpOnPage(null, new Rectangle(0, 0, 23, 68), b, IL));
+        assertFalse(SymbolsBuilder.hasQuarterSharpTopology(b, 40));
+    }
+
+    @Test
+    public void aSecondStemOnOriginalPageVetoesHalfSharp ()
+    {
+        final ByteProcessor glyph = halfSharp();
+        final ByteProcessor page = halfSharp();
+        for (int x = 17; x <= 19; x++) { vertical(page, x, 0, 67); }
+        assertFalse(SymbolsBuilder.hasQuarterSharpTopology(page, IL));
+        assertFalse(SymbolsBuilder.isQuarterSharpOnPage(page,
+                new Rectangle(0, 0, 23, 68), glyph, IL));
+    }
+
+    @Test
+    public void oneCrossbarDoesNotMakeHalfSharp ()
+    {
+        final ByteProcessor b = halfSharp();
+        for (int y = 42; y <= 52; y++) {
+            for (int x = 0; x < 23; x++) {
+                if ((x < 9) || (x > 12)) { b.set(x, y, BACKGROUND); }
+            }
+        }
+        assertFalse(SymbolsBuilder.hasQuarterSharpTopology(b, IL));
+    }
+
+
+    @Test
+    public void narrowLeftBarsRequireOneFullStemAndOriginalInk ()
+    {
+        final ByteProcessor sign = blank(13, 69);
+        for (int x = 6; x <= 8; x++) { vertical(sign, x, 0, 68); }
+        for (int y = 16; y <= 30; y++) { horizontal(sign, 0, 12, y); }
+        for (int y = 37; y <= 48; y++) { horizontal(sign, 0, 12, y); }
+        final Rectangle box = new Rectangle(0, 0, 13, 69);
+        assertFalse(SymbolsBuilder.hasQuarterSharpTopology(sign, 25));
+        assertTrue(SymbolsBuilder.hasNarrowQuarterSharpTopology(sign, 25));
+        assertTrue(SymbolsBuilder.isNarrowQuarterSharpOnPage(sign, box, sign, 25));
+        assertFalse(SymbolsBuilder.isNarrowQuarterSharpOnPage(null, box, sign, 25));
+        assertFalse(SymbolsBuilder.hasNarrowQuarterSharpTopology(sign, 20));
+        final ByteProcessor natural = (ByteProcessor) sign.duplicate();
+        vertical(natural, 1, 8, 60);
+        assertFalse(SymbolsBuilder.isNarrowQuarterSharpOnPage(natural, box, sign, 25));
+        final ByteProcessor flat = (ByteProcessor) sign.duplicate();
+        for (int y = 16; y <= 30; y++) {
+            for (int x = 0; x < 6; x++) { flat.set(x, y, BACKGROUND); }
+        }
+        assertFalse(SymbolsBuilder.hasNarrowQuarterSharpTopology(flat, 25));
+        assertFalse(SymbolsBuilder.isNarrowQuarterSharpOnPage(flat, box, sign, 25));
+        final ByteProcessor rest = (ByteProcessor) sign.duplicate();
+        for (int y = 0; y < 16; y++) {
+            for (int x = 6; x <= 8; x++) { rest.set(x, y, BACKGROUND); }
+        }
+        for (int y = 49; y < 69; y++) {
+            for (int x = 6; x <= 8; x++) { rest.set(x, y, BACKGROUND); }
+        }
+        assertFalse(SymbolsBuilder.hasNarrowQuarterSharpTopology(rest, 25));
+    }
+
     private static final Rectangle FLAT_BOX = new Rectangle(100, 30, 13, 66);
 
     /** A staff of 2-pixel lines, a space of 20 pixels, with a flat whose stem is at x=100. */
@@ -307,6 +434,94 @@ public class SymbolsBuilderTest
         assertTrue(SymbolsBuilder.hasCrossedFlatTopology(quarterFlat));
         assertTrue(SymbolsBuilder.getArabicAccidentalShape(quarterFlat, 24)
                 == org.audiveris.omr.glyph.Shape.QUARTER_FLAT);
+    }
+
+    @Test
+    public void detachedSlashRequiresOriginalCrossedInkInsideTheExistingBox ()
+    {
+        final ByteProcessor page = blank(34, 58);
+        for (int x = 15; x <= 18; x++) { vertical(page, x, 0, 57); }
+        thickDiagonal(page, 32, 8, 0, 34, 2);
+        for (int y = 32; y <= 57; y++) {
+            horizontal(page, 18, 33 - (y - 32) / 2, y);
+        }
+        final ByteProcessor damaged = (ByteProcessor) page.duplicate();
+        for (int y = 0; y < 28; y++) {
+            for (int x = 19; x < 34; x++) { damaged.set(x, y, BACKGROUND); }
+        }
+        final Rectangle box = new Rectangle(0, 0, 34, 58);
+        assertFalse(SymbolsBuilder.hasQuarterFlatTopology(damaged));
+        assertTrue(SymbolsBuilder.isFragmentedQuarterFlatOnPage(page, box, damaged, IL));
+        assertFalse(SymbolsBuilder.isFragmentedQuarterFlatOnPage(damaged, box, damaged, IL));
+        assertFalse(SymbolsBuilder.isFragmentedQuarterFlatOnPage(null, box, damaged, IL));
+        // A wider sign still needs independent bowl pitch evidence: no width relaxation.
+        assertFalse(SymbolsBuilder.isFragmentedQuarterFlatOnPage(page, box, damaged, 18));
+        final ByteProcessor sharp = (ByteProcessor) page.duplicate();
+        for (int x = 25; x <= 27; x++) { vertical(sharp, x, 0, 57); }
+        assertFalse(SymbolsBuilder.isFragmentedQuarterFlatOnPage(sharp, box, damaged, IL));
+        assertFalse(SymbolsBuilder.isFragmentedQuarterFlatOnPage(page, box, page, IL));
+    }
+
+    @Test
+    public void disconnectedStaffAndDotRemnantsCannotSupplyAFlatSlash ()
+    {
+        final ByteProcessor page = blank(34, 58);
+        for (int x = 15; x <= 18; x++) { vertical(page, x, 0, 57); }
+        for (int y = 32; y <= 57; y++) {
+            horizontal(page, 18, 33 - (y - 32) / 2, y);
+        }
+        // Separate upper-right marks tilt their pooled centroid toward the stem.
+        for (int y = 5; y <= 8; y++) { horizontal(page, 27, 33, y); }
+        for (int y = 14; y <= 17; y++) { horizontal(page, 21, 24, y); }
+        for (int y = 22; y <= 32; y++) { horizontal(page, 2, 5, y); }
+        assertTrue(SymbolsBuilder.hasCrossedFlatTopology(page));
+        assertTrue(SymbolsBuilder.hasContinuousStem(page, IL));
+        assertFalse(SymbolsBuilder.hasDescendingUpperRightSlash(page));
+        final ByteProcessor damaged = (ByteProcessor) page.duplicate();
+        for (int y = 0; y < 28; y++) {
+            for (int x = 19; x < 34; x++) { damaged.set(x, y, BACKGROUND); }
+        }
+        assertFalse(SymbolsBuilder.hasQuarterFlatTopology(damaged));
+        assertFalse(SymbolsBuilder.isFragmentedQuarterFlatOnPage(page,
+                new Rectangle(0, 0, 34, 58), damaged, IL));
+    }
+
+    @Test
+    public void courtesyParenthesesCannotSupplyAFlatSlash ()
+    {
+        final ByteProcessor courtesy = blank(34, 58);
+        for (int x = 15; x <= 18; x++) { vertical(courtesy, x, 0, 57); }
+        for (int y = 32; y <= 57; y++) {
+            horizontal(courtesy, 18, 33 - (y - 32) / 2, y);
+        }
+        thickDiagonal(courtesy, 4, 12, 0, 34, 0);
+        thickDiagonal(courtesy, 0, 34, 4, 57, 0);
+        thickDiagonal(courtesy, 29, 12, 33, 34, 0);
+        thickDiagonal(courtesy, 33, 34, 29, 57, 0);
+        // Region occupancy alone mistakes the parentheses for a crossing slash.
+        assertTrue(SymbolsBuilder.hasCrossedFlatTopology(courtesy));
+        assertTrue(SymbolsBuilder.hasContinuousStem(courtesy, IL));
+        assertFalse(SymbolsBuilder.hasDescendingUpperRightSlash(courtesy));
+        final ByteProcessor damaged = (ByteProcessor) courtesy.duplicate();
+        for (int y = 0; y < 28; y++) {
+            for (int x = 19; x < 34; x++) { damaged.set(x, y, BACKGROUND); }
+        }
+        assertFalse(SymbolsBuilder.isFragmentedQuarterFlatOnPage(courtesy,
+                new Rectangle(0, 0, 34, 58), damaged, IL));
+    }
+
+    @Test
+    public void disconnectedInkCountDoesNotEstablishAContinuousStem ()
+    {
+        final ByteProcessor digitFragment = blank(34, 67);
+        vertical(digitFragment, 18, 0, 17);
+        vertical(digitFragment, 18, 27, 66);
+        // The two pieces together exceed the old two-thirds ink-count test.
+        assertFalse(SymbolsBuilder.hasContinuousStem(digitFragment, IL));
+        final ByteProcessor stem = blank(34, 67);
+        vertical(stem, 18, 0, 66);
+        for (int y = 20; y <= 22; y++) { stem.set(18, y, BACKGROUND); }
+        assertTrue(SymbolsBuilder.hasContinuousStem(stem, IL));
     }
 
     @Test

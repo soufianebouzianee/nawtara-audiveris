@@ -425,6 +425,7 @@ public class StaffProjector
      */
     private void computeProjection ()
     {
+        computeLineThresholds();
         projection = new Projection.Short(0, sheet.getWidth() - 1);
 
         final ArrayList<Integer> derivatives = new ArrayList<>();
@@ -436,19 +437,19 @@ public class StaffProjector
                 : staff.getMidLine().yTranslated(+getBarlineHeight() / 2);
         final int dx = params.staffAbscissaMargin;
         final int xMin = sheet.xClamp(staff.getAbscissa(LEFT) - dx);
-        final int xMax = sheet.xClamp(staff.getAbscissa(RIGHT) + dx);
+        final int initialRight = sheet.xClamp(staff.getAbscissa(RIGHT) + dx);
+        // Pixels beyond the old sampling window were zero-filled, not measured blanks.
+        // Only continue a five-line staff whose ink reaches that window, and stop at
+        // the first measured wide blank so side-by-side staves remain separate.
+        final int xMax = staff.getLineCount() == 5
+                ? StaffProjectionRange.rightLimit(initialRight, sheet.getWidth() - 1,
+                        params.blankThreshold, params.minWideBlankWidth,
+                        x -> projectionCount(x, firstLine, lastLine))
+                : initialRight;
 
         // Populating projection data
         for (int x = xMin; x <= xMax; x++) {
-            final int yMin = sheet.yClamp(firstLine.yAt(x));
-            final int yMax = sheet.yClamp(lastLine.yAt(x) - 1);
-            short count = 0;
-
-            for (int y = yMin; y <= yMax; y++) {
-                if (pixelFilter.get(x, y) == 0) {
-                    count++;
-                }
-            }
+            final short count = projectionCount(x, firstLine, lastLine);
 
             projection.increment(x, count);
 
@@ -471,6 +472,20 @@ public class StaffProjector
         final double eliteDer = (double) derCumul / top;
         derivativeThreshold = (int) Math.rint(eliteDer * constants.minDerivativeRatio.getValue());
         logger.debug("eliteDerivative:{} derivativeThreshold:{} ", eliteDer, derivativeThreshold);
+    }
+
+    /** Count original foreground ink inside the projected staff band. */
+    private short projectionCount (int x, LineInfo firstLine, LineInfo lastLine)
+    {
+        final int yMin = sheet.yClamp(firstLine.yAt(x));
+        final int yMax = sheet.yClamp(lastLine.yAt(x) - 1);
+        short count = 0;
+        for (int y = yMin; y <= yMax; y++) {
+            if (pixelFilter.get(x, y) == 0) {
+                count++;
+            }
+        }
+        return count;
     }
 
     //------------------//
@@ -657,6 +672,23 @@ public class StaffProjector
 
         if (data.gap > params.gapThreshold) {
             return null;
+        }
+
+        // A short sharp stroke can accumulate staff-line pixels and mimic a full bar.
+        // Only veto when original ink independently identifies the same stroke as a sharp.
+        if (!halfMode && addedChunk == 0 && staff.getLineCount() == 5) {
+            org.audiveris.omr.glyph.Glyph sign = BarAccidentalInk.candidate(
+                    sheet.getPicture().getSource(Picture.SourceKey.GRAY), start, stop,
+                    yTop, yBottom, staff.getSpecificInterline());
+            if (sign != null) {
+                org.audiveris.omr.classifier.Evaluation[] votes =
+                        org.audiveris.omr.classifier.ShapeClassifier.getInstance().evaluate(
+                                sign, staff.getSpecificInterline(), 1, .6, null);
+                if (votes.length > 0 && votes[0].shape == org.audiveris.omr.glyph.Shape.SHARP) {
+                    logger.info("Rejected sharp-stroke bar Staff#{} x={} sign={}",staff.getId(),xMid,sign.getBounds());
+                    return null;
+                }
+            }
         }
 
         // Multiple rest: check white spaces beyond serif core
@@ -1242,9 +1274,6 @@ public class StaffProjector
 
         // Cumulate pixels for each abscissa
         computeProjection();
-
-        // Adjust thresholds according to actual line thicknesses in this staff
-        computeLineThresholds();
 
         // Retrieve all regions without staff lines
         findAllBlanks();

@@ -278,6 +278,35 @@ public class SymbolsBuilderTest
     }
 
     @Test
+    public void slashedKeyPitchComesFromItsBowlRatherThanItsUpperInk ()
+    {
+        final ByteProcessor sign = blank(39, 68);
+        for (int x = 17; x <= 22; x++) {
+            vertical(sign, x, 0, 67);
+        }
+        thickDiagonal(sign, 37, 10, 0, 41, 2);
+        for (int y = 44; y <= 62; y++) {
+            horizontal(sign, 22, 35, y);
+        }
+        // The hole's centre stays at y=53 even when the upper stroke gains mass.
+        for (int y = 47; y <= 59; y++) {
+            for (int x = 24; x <= 32; x++) {
+                sign.set(x, y, BACKGROUND);
+            }
+        }
+        final Double bowl = SymbolsBuilder.slashedFlatBowlY(sign, IL);
+        assertTrue(bowl != null && Math.abs(bowl - 53) < 0.01);
+        thickDiagonal(sign, 37, 10, 0, 41, 4);
+        assertTrue(Math.abs(SymbolsBuilder.slashedFlatBowlY(sign, IL) - bowl) < 0.01);
+        // A filled bowl has no independent pitch evidence.
+        for (int y = 47; y <= 59; y++) {
+            horizontal(sign, 24, 32, y);
+        }
+        assertTrue(SymbolsBuilder.slashedFlatBowlY(sign, IL) == null);
+        assertTrue(SymbolsBuilder.slashedFlatBowlY(thickFlat(false), IL) == null);
+    }
+
+    @Test
     public void aSlashedFlatIsAFlatOfTheKeyWhateverItWasClassifiedAs ()
     {
         // aa-dm3a's B half-flat on a scan: the slash reaches a space left of the stem, and the

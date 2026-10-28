@@ -1216,6 +1216,67 @@ public class SymbolsBuilder
     }
 
     /**
+     * A key flat's lower enclosed bowl is independent of the mass of its upper slash.
+     * Jawadi's separate stroke can join the next sign and lift the usual mass/area pitch.
+     * Require crossed-flat topology and exactly one substantial lower hole; an open or
+     * filled bowl supplies no independent evidence and keeps the ordinary pitch heuristic.
+     */
+    public static Double slashedFlatBowlY (ByteProcessor raster, double interline)
+    {
+        if ((raster == null) || (interline <= 0)
+                || (raster.getWidth() < 0.65 * interline)
+                || (raster.getWidth() > 2.0 * interline)
+                || (raster.getHeight() < 2.2 * interline)
+                || (raster.getHeight() > 3.8 * interline)
+                || !isSlashedFlat(raster)) {
+            return null;
+        }
+
+        final int w = raster.getWidth(), h = raster.getHeight();
+        final boolean[] seen = new boolean[w * h];
+        final int[] queue = new int[w * h];
+        Double result = null;
+
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                final int start = y * w + x;
+                if (seen[start] || (raster.get(x, y) != BACKGROUND)) {
+                    continue;
+                }
+                int head = 0, tail = 0, minY = h;
+                long totalY = 0;
+                boolean border = false;
+                queue[tail++] = start;
+                seen[start] = true;
+
+                while (head < tail) {
+                    final int pixel = queue[head++], px = pixel % w, py = pixel / w;
+                    minY = Math.min(minY, py);
+                    totalY += py;
+                    border |= (px == 0) || (py == 0) || (px == w - 1) || (py == h - 1);
+                    final int[] next = {pixel - 1, pixel + 1, pixel - w, pixel + w};
+                    for (int n : next) {
+                        if ((n < 0) || (n >= w * h)
+                                || (Math.abs(n % w - px) + Math.abs(n / w - py) != 1)
+                                || seen[n] || (raster.get(n % w, n / w) != BACKGROUND)) {
+                            continue;
+                        }
+                        seen[n] = true;
+                        queue[tail++] = n;
+                    }
+                }
+                if (!border && (minY >= h / 2) && (tail >= Math.max(8, h / 3))) {
+                    if (result != null) {
+                        return null;
+                    }
+                    result = (double) totalY / tail;
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
      * Recover a slash cut away by staff removal, within the existing glyph box and width gate.
      * This never expands a sign into nearby note/head ink. Both the surviving glyph and the
      * original page must retain one stem; the page must show the full crossed-flat topology.

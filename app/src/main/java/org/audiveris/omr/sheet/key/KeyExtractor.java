@@ -731,6 +731,29 @@ public class KeyExtractor
                     minGrade / Grades.intrinsicRatio,
                     null);
 
+            // Keep rejected key candidates too: SymbolsBuilder's dump only sees retained keys.
+            final String dump = System.getenv("AUDIVERIS_ARABIC_DUMP");
+            if ((dump != null) && !dump.isBlank()) {
+                try {
+                    final java.nio.file.Path folder = java.nio.file.Paths.get(dump);
+                    java.nio.file.Files.createDirectories(folder);
+                    final Rectangle box = glyph.getBounds();
+                    final String name = sheet.getId() + "-key-candidate-s" + id
+                            + "-x" + box.x + "-y" + box.y + "-w" + box.width + "-h" + box.height;
+                    javax.imageio.ImageIO.write(glyph.getBuffer().getBufferedImage(), "png",
+                            folder.resolve(name + ".png").toFile());
+                    final String line = name + "," + java.util.Arrays.toString(evals)
+                            + System.lineSeparator();
+                    synchronized (KeyExtractor.class) {
+                        java.nio.file.Files.writeString(folder.resolve("key-candidates.csv"), line,
+                                java.nio.file.StandardOpenOption.CREATE,
+                                java.nio.file.StandardOpenOption.APPEND);
+                    }
+                } catch (Exception ex) {
+                    logger.warn("Could not dump key candidate: {}", ex.toString());
+                }
+            }
+
             boolean kept = false;
 
             for (Evaluation eval : evals) {
@@ -769,7 +792,12 @@ public class KeyExtractor
         @Override
         public boolean isTooLarge (Rectangle bounds)
         {
-            return (bounds.width > params.maxGlyphWidth) || (bounds.height > params.maxGlyphHeight);
+            final boolean tooLarge = (bounds.width > params.maxGlyphWidth)
+                    || (bounds.height > params.maxGlyphHeight);
+            if (tooLarge) {
+                logger.debug("Staff#{} key candidate too large: {}", id, bounds);
+            }
+            return tooLarge;
         }
 
         @Override

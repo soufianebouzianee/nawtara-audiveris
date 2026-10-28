@@ -162,7 +162,12 @@ public class RunTable
         this.orientation = null;
         this.width = 0;
         this.height = 0;
-        this.sequences = null;
+        // A table with no sequence is saved with no <runs> element, so JAXB
+        // leaves this field as the constructor set it. Null made the reload
+        // of such a sheet fail in afterUnmarshal (sequences.length), and the
+        // whole book with it (Nawtara al-jawadi: love-story piano pages).
+        // JAXB replaces this array whenever the saved table has runs.
+        this.sequences = new RunSequence[0];
     }
 
     /**

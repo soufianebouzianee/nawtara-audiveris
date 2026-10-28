@@ -153,6 +153,18 @@ public class KeyAlterInter
                                         double grade,
                                         Staff staff)
     {
+        // A slash can pull the centroid above the flat's actual bowl. Use independent
+        // bowl evidence only for a geometrically confirmed slashed key flat.
+        if (shape == Shape.FLAT) {
+            final Double bowlY = org.audiveris.omr.sheet.symbol.SymbolsBuilder.slashedFlatBowlY(
+                    glyph.getBuffer(), staff.getSpecificInterline());
+            if (bowlY != null) {
+                final double measured = staff.pitchPositionOf(new java.awt.geom.Point2D.Double(
+                        glyph.getBounds().getCenterX(), glyph.getTop() + bowlY));
+                return new KeyAlterInter(glyph, shape, grade, staff,
+                        (double) Math.rint(measured), measured);
+            }
+        }
         Pitches p = computePitch(glyph, shape, staff);
 
         return new KeyAlterInter(glyph, shape, grade, staff, p.pitch, p.measuredPitch);

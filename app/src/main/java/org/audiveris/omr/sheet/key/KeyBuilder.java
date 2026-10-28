@@ -35,6 +35,7 @@ import org.audiveris.omr.sheet.Scale;
 import org.audiveris.omr.sheet.Scale.InterlineScale;
 import org.audiveris.omr.sheet.Sheet;
 import org.audiveris.omr.sheet.Staff;
+import org.audiveris.omr.sheet.symbol.SymbolsBuilder;
 import org.audiveris.omr.sheet.SystemInfo;
 import org.audiveris.omr.sheet.header.StaffHeader;
 import org.audiveris.omr.sheet.key.KeyColumn.PartStatus;
@@ -1770,7 +1771,9 @@ public class KeyBuilder
                     // End of area, measured from the last flat's bowl when it had one: a
                     // slashed flat reaches further right than a plain one.
                     final KeyPeak lastPeak = getLastPeak();
-                    final KeyPeak lastBowl = dropBowls ? bowls.get(lastPeak) : null;
+                    // refineSignature may already have removed this bowl as a narrow
+                    // trailing sign. Its ink still bounds the surviving last flat.
+                    final KeyPeak lastBowl = bowls.get(lastPeak);
                     refineShapeStop(
                             (lastBowl != null) ? lastBowl : lastPeak,
                             params.stdFlatTrail,
@@ -1952,21 +1955,33 @@ public class KeyBuilder
             final double[] pitchedGrades = new double[roi.size()];
             computePitchedGrades(clef.getKind(), pitchedGrades);
 
-            for (int i = 0; i < roi.size(); i++) {
-                KeySlice slice = roi.get(i);
-                KeyAlterInter alter = slice.getAlter();
+            // A retained, geometrically confirmed first half-flat establishes this key's
+            // context just as the first sign in rescueByPitch does. Missing later signs may
+            // use the same page-confirmed slash fallback after cropping to their key pitch.
+            final KeyAlterInter first = roi.isEmpty() ? null : roi.get(0).getAlter();
+            final boolean slashedKey = (keyShape == FLAT) && (first != null)
+                    && (first.getGlyph() != null)
+                    && SymbolsBuilder.isSlashedFlat(first.getGlyph().getBuffer());
+            extractor.setHalfFlatShapes(slashedKey);
+            try {
+                for (int i = 0; i < roi.size(); i++) {
+                    KeySlice slice = roi.get(i);
+                    KeyAlterInter alter = slice.getAlter();
 
-                if ((alter == null) || (pitchedGrades[i] < Grades.keyAlterMinGrade1)) {
-                    // Adjust slice rectangle, using theoretical pitch
-                    slice.setPitchRect(clef, keyShape, params.stdGlyphHeight);
-                    extractor.extractAlter(
-                            roi,
-                            peaks,
-                            slice,
-                            shapes,
-                            Grades.keyAlterMinGrade2,
-                            true);
+                    if ((alter == null) || (pitchedGrades[i] < Grades.keyAlterMinGrade1)) {
+                        // Adjust slice rectangle, using theoretical pitch
+                        slice.setPitchRect(clef, keyShape, params.stdGlyphHeight);
+                        extractor.extractAlter(
+                                roi,
+                                peaks,
+                                slice,
+                                shapes,
+                                Grades.keyAlterMinGrade2,
+                                true);
+                    }
                 }
+            } finally {
+                extractor.setHalfFlatShapes(false);
             }
         }
 

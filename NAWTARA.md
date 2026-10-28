@@ -32,6 +32,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-10-07 | A key signature whose signs were all lost (a flat joined to the clef, a half-flat not recognised) is read again with each sign cropped to the pitch the clef gives it, kept only when its first sign reads clearly and at least two signs are found; a half-flat there is recognised by its slash on the page; a weak rest that matches the page's confident rests in size and height on the staff is kept |
 | 2026-10-07 (2) | A half-flat in a bar is linked to the note at its own pitch, looked for from its bowl as well as from half its height (a step off only beside a ledger note); a glyph the classifier reads confidently as a rest or a natural is not taken for a half-flat |
 | 2026-10-10 | Single-stem and narrow half-sharps; naturals on ledger lines rebuilt from the page; half-flats broken by staff removal or drawn wide, pitched from their bowl; eighth rests split by curve extraction; printed triplets kept against their own fragments; short beam hooks joined by blur; staff lines followed past the projection window; mixed-key sharps taken for noteheads; augmentation dots touching ties; short sharp strokes no longer taken for barlines |
+| 2026-10-28 | A page whose saved sheet holds an empty run table reloads instead of failing; a slashed key flat is pitched from its enclosed bowl, so a slash joined to the next sign no longer lifts it off its line and gets the key refused; the end of a slashed key is measured from its last bowl, and its later signs may be recovered as slashed flats at their key pitch; rejected key candidates can be dumped for diagnosis |
 
 Files modified or added (all under `app/`):
 
@@ -39,6 +40,7 @@ Files modified or added (all under `app/`):
 - `app/src/main/java/org/audiveris/omr/glyph/GlyphCluster.java`
 - `app/src/main/java/org/audiveris/omr/glyph/Shape.java`
 - `app/src/main/java/org/audiveris/omr/glyph/ShapeSet.java`
+- `app/src/main/java/org/audiveris/omr/run/RunTable.java`
 - `app/src/main/java/org/audiveris/omr/score/MusicXML.java`
 - `app/src/main/java/org/audiveris/omr/score/PartwiseBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/SheetStub.java`

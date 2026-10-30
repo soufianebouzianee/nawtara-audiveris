@@ -214,6 +214,10 @@ jar {
 }
 
 test {
+    // AWT starts a macOS application when a test loads a font (Bravura in
+    // ChamferMatchingTest) and the JVM aborts outside a window session.
+    systemProperty 'java.awt.headless', 'true'
+
     // Test classes not meant for Junit
     exclude '**/org/audiveris/omr/jaxb/basic/**'
     exclude '**/org/audiveris/omr/jaxb/facade/**'

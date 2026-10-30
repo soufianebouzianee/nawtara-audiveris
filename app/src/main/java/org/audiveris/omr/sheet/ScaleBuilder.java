@@ -41,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.awt.Point;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -369,7 +370,19 @@ public class ScaleBuilder
             return scl;
         }
 
-        final LineScale lineScale = new LineScale(blackPeak);
+        int maxLine = blackPeak.max;
+        if (blackPeak.min == blackPeak.max) {
+            // Quantized staff lines can form a thinner dominant peak and a nearby
+            // thicker minority peak discarded by the staff/beam count filter.
+            // Use only histogram-supported headroom, never an arbitrary wider bound.
+            final int limit = blackPeak.main + Math.max(1, (int) Math.round(blackPeak.main * 0.5));
+            for (Range peak : histoKeeper.blackFinder.getPeaks()) {
+                if (peak.main > maxLine && peak.main <= limit) {
+                    maxLine = peak.main;
+                }
+            }
+        }
+        final LineScale lineScale = new LineScale(blackPeak.min, blackPeak.main, maxLine);
         final InterlineScale interlineScale;
         InterlineScale smallInterlineScale = null;
 
@@ -810,10 +823,11 @@ public class ScaleBuilder
 
             // Black peaks
             final int area = blackFunction.getArea();
-            final List<Range> blackPeaks = blackFinder.findPeaks(
+            // Preserve the finder's significant peaks for line-thickness headroom.
+            final List<Range> blackPeaks = new ArrayList<>(blackFinder.findPeaks(
                     1,
                     (int) Math.rint(area * constants.minDerivativeRatio.getValue()),
-                    constants.minGainRatio.getValue());
+                    constants.minGainRatio.getValue()));
 
             if (blackPeaks.isEmpty()) {
                 sheet.getStub().invalidate();

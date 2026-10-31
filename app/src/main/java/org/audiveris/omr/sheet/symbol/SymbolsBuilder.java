@@ -340,7 +340,7 @@ public class SymbolsBuilder
             final double bowlPitch = bowlY != null
                     ? closestStaff.pitchPositionOf(new java.awt.geom.Point2D.Double(
                             glyph.getBounds().getCenterX(), glyph.getTop() + bowlY)) : 0;
-            final AlterInter alter = arabicAccidental == Shape.QUARTER_FLAT && bowlY != null
+            AlterInter alter = arabicAccidental == Shape.QUARTER_FLAT && bowlY != null
                     ? new AlterInter(glyph, arabicAccidental, 0.95, closestStaff,
                             (double) Math.rint(bowlPitch), bowlPitch)
                     : AlterInter.create(glyph, arabicAccidental, 0.95, closestStaff);
@@ -348,6 +348,26 @@ public class SymbolsBuilder
             final List<Inter> systemHeads = sig.inters(HeadInter.class);
             Collections.sort(systemHeads, org.audiveris.omr.sig.inter.Inters.byAbscissa);
             alter.setLinks(systemHeads);
+            // A long stem or a slash can pull the usual mass/area pitch a step up: a taller
+            // sign's half-flat on B was pitched as C and linked to no head. Only then, try the
+            // pitch of its enclosed bowl (as for key flats, KeyAlterInter.create); on a damaged
+            // photo the bowl can measure low, so it never replaces a pitch that found its note.
+            if ((arabicAccidental == Shape.QUARTER_FLAT) && (bowlY == null)
+                    && sig.getRelations(alter, AlterHeadRelation.class).isEmpty()) {
+                final Double lowerY = lowerBowlY(glyph.getBuffer());
+                if (lowerY != null) {
+                    final double lowerPitch = closestStaff.pitchPositionOf(
+                            new java.awt.geom.Point2D.Double(glyph.getBounds().getCenterX(),
+                                    glyph.getTop() + lowerY));
+                    if (Math.rint(lowerPitch) != alter.getIntegerPitch()) {
+                        alter.remove();
+                        alter = new AlterInter(glyph, arabicAccidental, 0.95, closestStaff,
+                                (double) Math.rint(lowerPitch), lowerPitch);
+                        sig.addVertex(alter);
+                        alter.setLinks(systemHeads);
+                    }
+                }
+            }
             createdInters.add(alter);
             logger.debug("Detected Arabic {} glyph#{} as {}", arabicAccidental, glyph.getId(), alter);
         }
@@ -865,7 +885,22 @@ public class SymbolsBuilder
                             glyph.getBounds(),
                             glyph.getBuffer(),
                             keyAlter.getStaff().getSpecificInterline());
+                    final Shape before = candidate;
                     candidate = crossingVerdict(candidate, ink, first);
+
+                    // Leland's bakiye half-flat slashes mostly right of its stem: its left share
+                    // can fall between the false (0.023 and less) and true (0.064 and more)
+                    // flats measured. There, slash ink right of the stem that the staff lines do
+                    // not explain keeps the half-flat. Only for the key's first sign, as for
+                    // SLASH_PRESENT: a later plain flat (2alo-tra's A-flat) passed it.
+                    if ((before == Shape.QUARTER_FLAT) && (candidate == null) && first
+                            && (ink.leftShare() > SLASH_GAP_LOW)
+                            && hasSlashRightOfStem(glyph.getBuffer())
+                            && hasNonStaffFlatSlash(page, glyph.getBounds(), glyph.getBuffer(),
+                                    keyAlter.getStaff().getSpecificInterline(),
+                                    keyAlter.getStaff().getLines())) {
+                        candidate = Shape.QUARTER_FLAT;
+                    }
                 }
             }
 
@@ -1359,6 +1394,12 @@ public class SymbolsBuilder
             return null;
         }
 
+        return lowerBowlY(raster);
+    }
+
+    /** The centre row of a flat's one substantial enclosed hole in its lower half, or null. */
+    static Double lowerBowlY (ByteProcessor raster)
+    {
         final int w = raster.getWidth(), h = raster.getHeight();
         final boolean[] seen = new boolean[w * h];
         final int[] queue = new int[w * h];
@@ -2188,6 +2229,9 @@ public class SymbolsBuilder
      * false ones, 0.023 and less.
      */
     private static final double SLASH_ABSENT = 0.035;
+
+    /** Highest left share measured on a false half-flat: above it, the right side may decide. */
+    private static final double SLASH_GAP_LOW = 0.023;
 
     /**
      * At or above this share, a key's first flat is slashed. Measured by this code on the grey

@@ -376,6 +376,28 @@ public class SymbolsBuilderTest
         return glyph;
     }
 
+    /** Drawn half-flat: stem from {@code top}, a short slash, a bowl closed at rows 42-56. */
+    private static ByteProcessor slashedFlat (int top)
+    {
+        final ByteProcessor b = blank(17, 60);
+        for (int x = 2; x <= 3; x++) { vertical(b, x, top, 58); }
+        for (int x = 4; x <= 14; x++) { b.set(x, 18 - (x - 4) / 2, FOREGROUND); b.set(x, 19 - (x - 4) / 2, FOREGROUND); }
+        for (int x = 4; x <= 13; x++) { b.set(x, 41, FOREGROUND); b.set(x, 42, FOREGROUND); }
+        for (int y = 41; y <= 54; y++) { b.set(13, y, FOREGROUND); b.set(14, y, FOREGROUND); }
+        for (int x = 4; x <= 14; x++) { b.set(x, 57 - (x - 4) / 2, FOREGROUND); b.set(x, 58 - (x - 4) / 2, FOREGROUND); }
+        return b;
+    }
+
+    @Test
+    public void halfFlatBowlDoesNotFollowAHigherStem ()
+    {
+        final Double low = SymbolsBuilder.lowerBowlY(slashedFlat(5));
+        final Double high = SymbolsBuilder.lowerBowlY(slashedFlat(0));
+        assertTrue((low != null) && (high != null));
+        assertTrue(Math.abs(low - high) < 0.01);
+        assertTrue((low > 42) && (low < 56));
+    }
+
     private static final Rectangle FLAT_BOX = new Rectangle(100, 30, 13, 66);
 
     /** A staff of 2-pixel lines, a space of 20 pixels, with a flat whose stem is at x=100. */

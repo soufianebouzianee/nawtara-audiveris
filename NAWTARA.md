@@ -37,6 +37,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-10-31 | A page on which no staff is found (a lyrics page, a lone short staff) is left out instead of failing the export of the whole book |
 | 2026-10-31 (2) | A half-sharp drawn as a sharp with one stem and slanted bars (as MuseScore prints it) is read on images: its bars are measured on each side of the stem on the original page, and a second stem refuses it |
 | 2026-10-31 (3) | A plain flat whose stem crosses a staff line is no longer read as a half-flat when staff removal leaves a stub of the line beside its stem: the slash must show on the original page as ink the staff lines do not explain |
+| 2026-10-31 (4) | A key's first half-flat whose slash lies almost entirely right of its stem is kept when that slash shows on the page as ink the staff lines do not explain; a half-flat in a bar that links to no note is pitched from its enclosed bowl, so a taller sign is no longer read a step high |
 
 Files modified or added (all under `app/`):
 

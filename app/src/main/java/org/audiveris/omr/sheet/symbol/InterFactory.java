@@ -34,6 +34,7 @@ import org.audiveris.omr.sheet.Staff;
 import org.audiveris.omr.sheet.SystemInfo;
 import org.audiveris.omr.sheet.rhythm.MeasureStack;
 import org.audiveris.omr.sheet.time.BasicTimeColumn;
+import org.audiveris.omr.sheet.time.BarlineTime;
 import org.audiveris.omr.sheet.time.TimeColumn;
 import org.audiveris.omr.sig.SIGraph;
 import org.audiveris.omr.sig.inter.AbstractChordInter;
@@ -90,6 +91,7 @@ import org.audiveris.omr.sig.inter.StaffBarlineInter;
 import org.audiveris.omr.sig.inter.StemInter;
 import org.audiveris.omr.sig.inter.TimeCustomInter;
 import org.audiveris.omr.sig.inter.TimeNumberInter;
+import org.audiveris.omr.sig.inter.TimePairInter;
 import org.audiveris.omr.sig.inter.TimeWholeInter;
 import org.audiveris.omr.sig.inter.TremoloInter;
 import org.audiveris.omr.sig.inter.TupletInter;
@@ -713,6 +715,10 @@ public class InterFactory
 
         systemTimes.removeAll(headerTimes);
 
+        for (MeasureStack stack : system.getStacks()) {
+            systemTimes.addAll(BarlineTime.recover(stack));
+        }
+
         if (systemTimes.isEmpty()) {
             return;
         }
@@ -751,6 +757,11 @@ public class InterFactory
                                 && !(inter instanceof InterEnsemble));
 
                 neighbors.removeAll(times);
+                for (AbstractTimeInter time : times) {
+                    if (time instanceof TimePairInter pair) {
+                        neighbors.removeAll(pair.getMembers());
+                    }
+                }
 
                 for (AbstractTimeInter time : times) {
                     final double timeGrade = time.getGrade();

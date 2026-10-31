@@ -50,6 +50,7 @@ import org.audiveris.omr.sheet.ui.SheetResultPainter;
 import org.audiveris.omr.sheet.ui.StubsController;
 import org.audiveris.omr.step.OmrStep;
 import org.audiveris.omr.step.ProcessingCancellationException;
+import org.audiveris.omr.step.StepException;
 import org.audiveris.omr.step.StepPause;
 import org.audiveris.omr.step.ui.StepMonitoring;
 import org.audiveris.omr.ui.Colors;
@@ -1895,6 +1896,21 @@ public class Book
         return promptedForUpgrade;
     }
 
+    /**
+     * A step may deliberately invalidate a sheet containing no music. Such a sheet
+     * must not prevent the remaining sheets from reaching their requested step.
+     */
+    private static boolean isNoMusicFailure (SheetStub stub,
+                                             Exception ex)
+    {
+        Throwable cause = ex;
+        while (cause instanceof ExecutionException) {
+            cause = cause.getCause();
+        }
+
+        return !stub.isValid() && (cause instanceof StepException);
+    }
+
     //---------------//
     // reachBookStep //
     //---------------//
@@ -1965,6 +1981,12 @@ public class Book
                                 }
 
                                 return true; // Fixes issue #960
+                            } catch (Exception ex) {
+                                if (!isNoMusicFailure(stub, ex)) {
+                                    throw ex;
+                                }
+                                logger.info("Skipping sheet without music: {}", stub);
+                                return true;
                             } finally {
                                 stub.printWatch(false);
                                 LogUtil.stopStub();
@@ -2001,6 +2023,9 @@ public class Book
 
                         // Final processing, one stub after the other
                         for (SheetStub stub : theStubs) {
+                            if (!stub.isValid()) {
+                                continue;
+                            }
                             LogUtil.start(stub);
 
                             try {
@@ -2013,8 +2038,12 @@ public class Book
                             } catch (Exception ex) {
                                 // Exception raised on stub
                                 // Let processing continue for the other stubs
-                                logger.warn("Error processing stub");
-                                someFailure = true;
+                                if (isNoMusicFailure(stub, ex)) {
+                                    logger.info("Skipping sheet without music: {}", stub);
+                                } else {
+                                    logger.warn("Error processing stub", ex);
+                                    someFailure = true;
+                                }
                             } finally {
                                 stub.printWatch(false);
                                 if (swap) {
@@ -2041,8 +2070,12 @@ public class Book
                         } catch (Exception ex) {
                             // Exception raised on stub
                             // Let processing continue for the other stubs
-                            logger.warn("Error processing stub {}", ex.getMessage(), ex);
-                            someFailure = true;
+                            if (isNoMusicFailure(stub, ex)) {
+                                logger.info("Skipping sheet without music: {}", stub);
+                            } else {
+                                logger.warn("Error processing stub {}", ex.getMessage(), ex);
+                                someFailure = true;
+                            }
                         } finally {
                             stub.printWatch(false);
                             if (swap) {
@@ -2057,7 +2090,7 @@ public class Book
                     logger.info("End of {}", this);
                 }
 
-                return !someFailure;
+                return !someFailure && !getValidStubs(theStubs).isEmpty();
             } finally {
                 LogUtil.stopStub();
                 StepMonitoring.notifyStop();
@@ -2623,7 +2656,17 @@ public class Book
                                List<Score> theScores,
                                boolean swap)
     {
-        boolean ok = reachBookStep(OmrStep.last(), false, theStubs, swap);
+        // The caller's selection can predate GRID invalidating a sheet.
+        theStubs = getValidStubs(theStubs);
+        if (theStubs.isEmpty()) {
+            return false;
+        }
+
+        final boolean ok = reachBookStep(OmrStep.last(), false, theStubs, swap);
+        theStubs = getValidStubs(theStubs);
+        if (theStubs.isEmpty()) {
+            return false; // A book with no music still cannot be exported.
+        }
 
         if (ok) {
             if (theScores.isEmpty()) {

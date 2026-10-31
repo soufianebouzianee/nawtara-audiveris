@@ -394,6 +394,14 @@ public class SymbolsBuilder
                         glyph.getBounds(), glyph.getBuffer(), staff.getSpecificInterline())) {
             candidate = Shape.QUARTER_SHARP;
         }
+        // A slanted sharp can also pass the older crossed-flat fallback. Original sharp
+        // topology takes precedence, as it does in the SHARP-gated path above.
+        if (!isReadAsRest(evals)
+                && isSlantedQuarterSharpOnPage(
+                        sheet.getPicture().getSource(Picture.SourceKey.GRAY),
+                        glyph.getBounds(), glyph.getBuffer(), staff.getSpecificInterline())) {
+            candidate = Shape.QUARTER_SHARP;
+        }
         if ((candidate == null) && !isReadAsRest(evals)
                 && isNarrowQuarterSharpOnPage(
                         sheet.getPicture().getSource(Picture.SourceKey.GRAY),
@@ -785,8 +793,9 @@ public class SymbolsBuilder
         // candidate raster is the ordinary Western natural sign (two staggered stems), including
         // the signs that cancel B-flat in "Ah ya Hilu". Automatic promotion made those notes 50
         // cents sharp. QUARTER_SHARP remains supported by the model, data structures and MusicXML
-        // exporter. A separate SHARP-gated path checks one-stem topology against the original
-        // page; this general geometry fallback must never promote naturals.
+        // exporter. Separate paths check one-stem topology against the original page, including
+        // thick slanted bars independently of classifier votes; this fallback must never promote
+        // naturals from bounding-box geometry.
 
         // Wider crossed signs can be genuine half-flats, but their shifted bowl reference
         // attached ghanni scan bars 36/40 to B-flat instead of A. Keep the width gate until
@@ -822,6 +831,12 @@ public class SymbolsBuilder
             Shape candidate = getArabicAccidentalShape(glyph, keyAlter.getStaff(), classifiedFlat);
             if ((keyAlter.getShape() == Shape.SHARP)
                     && isQuarterSharpOnPage(sheet.getPicture().getSource(Picture.SourceKey.GRAY),
+                            glyph.getBounds(), glyph.getBuffer(),
+                            keyAlter.getStaff().getSpecificInterline())) {
+                candidate = Shape.QUARTER_SHARP;
+            }
+            if ((keyAlter.getShape() == Shape.SHARP)
+                    && isSlantedQuarterSharpOnPage(sheet.getPicture().getSource(Picture.SourceKey.GRAY),
                             glyph.getBounds(), glyph.getBuffer(),
                             keyAlter.getStaff().getSpecificInterline())) {
                 candidate = Shape.QUARTER_SHARP;
@@ -1093,6 +1108,103 @@ public class SymbolsBuilder
             previous = bar;
         }
         return (bands == 2) && (rows >= h * 0.12) && (rows <= h * 0.45);
+    }
+
+    /**
+     * One-stem slanted-bar signs (Stein and Leland's Kucuk Mucenneb sharp).
+     * Leland adds a middle diagonal stroke, so a same-row two-band test cannot read it.
+     * Match transverse ink on either side separately: every thick band must rise to the right.
+     * Thin horizontal ledger lines fail both the thickness and rise requirements. Two stems,
+     * including a natural's staggered stems, are vetoed before measuring the bars.
+     */
+    static boolean hasSlantedQuarterSharpTopology (ByteProcessor buffer, double interline)
+    {
+        if (buffer == null || interline <= 0) { return false; }
+        final int w = buffer.getWidth(), h = buffer.getHeight();
+        if (w / interline < 0.8 || w / interline > 1.5
+                || h / interline < 1.8 || h / interline > 3.6
+                || longStemClusters(buffer, 0.50) != 1) { return false; }
+        int left = w, right = -1, longest = 0;
+        for (int x = 0; x < w; x++) {
+            int count = 0;
+            for (int y = 0; y < h; y++) {
+                if (buffer.get(x, y) < INK_LEVEL) { count++; }
+            }
+            if (count >= h * 0.65) { left = Math.min(left, x); right = x; }
+            longest = Math.max(longest, count);
+        }
+        if (right < left || longest < h * 0.80 || left < w * 0.35 || right > w * 0.65
+                || right - left + 1 > w * 0.25) { return false; }
+        final List<int[]> before = transverseBands(buffer, (int) Math.rint(w * 0.20),
+                (int) Math.rint(w * 0.35));
+        final List<int[]> after = transverseBands(buffer, (int) Math.rint(w * 0.65),
+                (int) Math.rint(w * 0.80));
+        if ((before.size() != 2 && before.size() != 3) || before.size() != after.size()) {
+            return false;
+        }
+        double previousCentre = -1, previousRise = -1;
+        for (int i = 0; i < before.size(); i++) {
+            final int[] a = before.get(i), b = after.get(i);
+            final double rise = (a[0] + a[1] - b[0] - b[1]) / 2.0;
+            final double centre = (a[0] + a[1] + b[0] + b[1]) / 4.0;
+            if (a[1] - a[0] + 1 < interline * 0.16
+                    || b[1] - b[0] + 1 < interline * 0.16
+                    || a[1] - a[0] + 1 > interline * 0.65
+                    || b[1] - b[0] + 1 > interline * 0.65
+                    || rise < Math.max(1, interline * 0.12 - 1) || rise > interline * 0.65
+                    || b[0] < h * 0.10 || a[1] > h * 0.90
+                    || (i > 0 && (centre - previousCentre < interline * 0.35
+                            || centre - previousCentre > interline * 1.4
+                            || Math.abs(rise - previousRise) > interline * 0.20))) {
+                return false;
+            }
+            previousCentre = centre;
+            previousRise = rise;
+        }
+        return true;
+    }
+
+    /** Majority ink over a short off-stem strip, retaining separate transverse strokes. */
+    private static List<int[]> transverseBands (ByteProcessor buffer, int x0, int x1)
+    {
+        final List<int[]> bands = new ArrayList<>();
+        int start = -1;
+        for (int y = 0; y <= buffer.getHeight(); y++) {
+            int count = 0;
+            if (y < buffer.getHeight()) {
+                for (int x = x0; x < x1; x++) {
+                    if (buffer.get(x, y) < INK_LEVEL) { count++; }
+                }
+            }
+            final boolean ink = y < buffer.getHeight() && count * 2 >= x1 - x0;
+            if (ink && start < 0) { start = y; }
+            if (!ink && start >= 0) { bands.add(new int[] {start, y - 1}); start = -1; }
+        }
+        return bands;
+    }
+
+    /** Staff removal can fragment bars; only the original ink may establish the slanted sign. */
+    static boolean isSlantedQuarterSharpOnPage (ByteProcessor page, Rectangle box,
+                                                ByteProcessor glyph, double interline)
+    {
+        if (page == null || glyph == null || interline <= 0
+                || box.width != glyph.getWidth() || box.height != glyph.getHeight()
+                || box.width / interline < 0.8 || box.width / interline > 1.5
+                || box.height / interline < 1.8 || box.height / interline > 3.6
+                || longStemClusters(glyph, 0.65) != 1) { return false; }
+        // Look beyond the glyph when identifying staff lines: a short thick slanted bar
+        // can cover most of a tight crop and otherwise be erased as a staff line.
+        final int margin = (int) Math.rint(interline);
+        final boolean[][] ink = inkWithoutStaffLines(page, box.x - margin, box.y,
+                box.width + 2 * margin, box.height, (int) Math.rint(interline));
+        final ByteProcessor original = new ByteProcessor(box.width, box.height);
+        original.setValue(BACKGROUND); original.fill();
+        for (int y = 0; y < box.height; y++) {
+            for (int x = 0; x < box.width; x++) {
+                if (ink[y][x + margin]) { original.set(x, y, FOREGROUND); }
+            }
+        }
+        return hasSlantedQuarterSharpTopology(original, interline);
     }
 
     /** Narrow left-bar half-sharp style; unlike a rest it has a full-height straight stem. */

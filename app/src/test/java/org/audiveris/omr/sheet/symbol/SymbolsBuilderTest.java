@@ -151,6 +151,129 @@ public class SymbolsBuilderTest
         assertFalse(SymbolsBuilder.hasNarrowQuarterSharpTopology(rest, 25));
     }
 
+    /** Original CC0 drawing: two slanted bars, optionally with Leland's middle slash. */
+    private static ByteProcessor slantedSharp (boolean middle)
+    {
+        final ByteProcessor b = blank(29, 52);
+        for (int x = 14; x <= 15; x++) { vertical(b, x, 0, 51); }
+        for (int x = 4; x <= 24; x++) {
+            final int rise = (int) Math.rint((x - 4) * 0.3);
+            for (int dy = 0; dy <= 6; dy++) {
+                b.set(x, 16 - rise + dy, FOREGROUND);
+                b.set(x, 37 - rise + dy, FOREGROUND);
+            }
+        }
+        if (middle) {
+            for (int x = 0; x < 29; x++) {
+                for (int dy = 0; dy <= 6; dy++) {
+                    b.set(x, 29 - (int) Math.rint(x * 0.4) + dy, FOREGROUND);
+                }
+            }
+        }
+        return b;
+    }
+
+    @Test
+    public void slantedBarsAreMeasuredOnEachSideOfOneStem ()
+    {
+        for (boolean middle : new boolean[] {false, true}) {
+            final ByteProcessor b = slantedSharp(middle);
+            assertTrue(SymbolsBuilder.hasSlantedQuarterSharpTopology(b, 21));
+            assertTrue(SymbolsBuilder.isSlantedQuarterSharpOnPage(b,
+                    new Rectangle(0, 0, 29, 52), b, 21));
+        }
+        assertFalse(SymbolsBuilder.hasQuarterSharpTopology(slantedSharp(true), 21));
+    }
+
+    @Test
+    public void slantedBarsRequireOriginalInkAndVetoASecondStem ()
+    {
+        final ByteProcessor b = slantedSharp(true);
+        final Rectangle box = new Rectangle(0, 0, 29, 52);
+        assertFalse(SymbolsBuilder.isSlantedQuarterSharpOnPage(null, box, b, 21));
+        final ByteProcessor sharp = (ByteProcessor) b.duplicate();
+        for (int x = 21; x <= 22; x++) { vertical(sharp, x, 0, 51); }
+        assertFalse(SymbolsBuilder.hasSlantedQuarterSharpTopology(sharp, 21));
+        assertFalse(SymbolsBuilder.isSlantedQuarterSharpOnPage(sharp, box, b, 21));
+        final ByteProcessor natural = (ByteProcessor) b.duplicate();
+        vertical(natural, 6, 0, 33);
+        vertical(natural, 22, 18, 51);
+        assertFalse(SymbolsBuilder.hasSlantedQuarterSharpTopology(natural, 21));
+    }
+
+    @Test
+    public void ledgerLinesAndRepeatDotsDoNotMakeSlantedBars ()
+    {
+        final ByteProcessor b = blank(29, 52);
+        for (int x = 14; x <= 15; x++) { vertical(b, x, 0, 51); }
+        for (int y : new int[] {15, 16, 36, 37}) { horizontal(b, 0, 28, y); }
+        assertFalse(SymbolsBuilder.hasSlantedQuarterSharpTopology(b, 21));
+        // Even thick horizontal fragments have no measured rise.
+        for (int y : new int[] {17, 18, 19, 20, 38, 39, 40, 41}) {
+            horizontal(b, 0, 28, y);
+        }
+        assertFalse(SymbolsBuilder.hasSlantedQuarterSharpTopology(b, 21));
+        final ByteProcessor repeat = blank(29, 52);
+        vertical(repeat, 14, 0, 51);
+        for (int y : new int[] {17, 18, 19, 33, 34, 35}) {
+            horizontal(repeat, 22, 26, y);
+        }
+        assertFalse(SymbolsBuilder.hasSlantedQuarterSharpTopology(repeat, 21));
+    }
+
+    /** The 300 dpi page crop as PNG (400 x 220, 1 bit), kept in the source so the patch stays text. */
+    private static final String ONE_STEM_PAGE_PNG = ""
+            + "iVBORw0KGgoAAAANSUhEUgAAAZAAAADcAQAAAAB2KcrCAAAAAmJLR0QAAd2KE6QAAAAJcEhZcwAACxIA"
+            + "AAsSAdLdfvwAAAAHdElNRQfqCh8BERPvZMXVAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTMxVDAx"
+            + "OjE3OjE5KzAwOjAwQQ6VUAAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0zMVQwMToxNzoxOSswMDow"
+            + "MDBTLewAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMzFUMDE6MTc6MTkrMDA6MDBnRgwzAAAC"
+            + "dUlEQVRo3u3XS47UMBAAUIdIRGym10iIcJLx3GCuwDGGzTg7lhyhj4J3w66vYMQFPLtEslLYiV2OOp3g"
+            + "WtBqUHnVnzzFvyqXBZCbYMKECRMmTJgwYcKECRMmS3K7rV728wU/OYUfv52PpboKKevYqBakoZPDVUhL"
+            + "J5JO1FXIQCaVJZPalJEnnCbRdGXkYUFEEXF5McRdGTELcrOtLxqLC5HYz7FVTGSYgppE1E/QNPLxuYJu"
+            + "Ti2FBMbPVcpGxURUYyK+lRArKkckfhw9jfjHayLRPhNZQZpk7V9AJodAKBtG+0RkYmYtJW/Vdyp5fpIm"
+            + "JuNC8jKKQBRlKd1EgEJ0IDWSG21FJ7LzC/8rfi0890O62CWnNXmjFqTeIQOS+yWJpcKwS8KRlMlhReRf"
+            + "IC2dSDpRVyEDmaRSgUBSqUAgqVQYTCY/1sS3TGIcDyITgcS1F0gqFWwmnzIxl8iHSDokTiDpxSVysy0m"
+            + "WBuCwEzxZn2gunkjhbF0KTxwLEimKZjJYzhLJlIfR7FJKvgao9oeTuEsmYg8um3ypW/Gmbz6DaNnMsCx"
+            + "3yQwdI2LucOTDoldExEzv6+c+kwEErNNtGgskjH+6onG7HBOwjgMEpdJt0nC+0tJj6eZ0rHb8pRqD08E"
+            + "5qA1aYBMJKSRTqTORG2QaqptJJImE9gg70cqqXy6iLsEpE67ZIA2n1nnk9x6auK/98LF9w227fCuulp9"
+            + "K1Lp7NNFDBe/8VoMl38g9mMHbT7MbS6E+uV1GMeCz7WZNJkc9whk8ojksEfeZeLTRSJqj+R776s85ed2"
+            + "CCyuykz+HwJlBP5IoJBAGQEmTJgwYcKECRMmTH4DVmSpJEDpftsAAAAASUVORK5CYII=";
+
+    /**
+     * Engraved page, 300 dpi (CC0 test piece, MuseScore 4 / Leland): F half-sharp, F sharp,
+     * F natural, C half-sharp. Boxes are the glyphs Audiveris retained on that page.
+     */
+    @Test
+    public void engravedSlantedHalfSharpsPassAndSharpOrNaturalDoNot ()
+        throws java.io.IOException
+    {
+        final java.awt.image.BufferedImage image;
+        image = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(
+                java.util.Base64.getDecoder().decode(ONE_STEM_PAGE_PNG)));
+        final ByteProcessor page = new ByteProcessor(image.getWidth(), image.getHeight());
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                page.set(x, y, (image.getRGB(x, y) & 0xFF) < 128 ? FOREGROUND : BACKGROUND);
+            }
+        }
+        final Rectangle[] halfSharps = {new Rectangle(56, 115, 29, 52), new Rectangle(306, 73, 29, 52)};
+        final Rectangle[] others = {new Rectangle(148, 113, 20, 56), new Rectangle(237, 114, 14, 54)};
+        for (Rectangle box : halfSharps) {
+            assertTrue(SymbolsBuilder.isSlantedQuarterSharpOnPage(page, box, crop(page, box), 21));
+        }
+        for (Rectangle box : others) {
+            assertFalse(SymbolsBuilder.isSlantedQuarterSharpOnPage(page, box, crop(page, box), 21));
+        }
+    }
+
+    private static ByteProcessor crop (ByteProcessor page, Rectangle box)
+    {
+        page.setRoi(box);
+        final ByteProcessor glyph = (ByteProcessor) page.crop();
+        page.resetRoi();
+        return glyph;
+    }
+
     private static final Rectangle FLAT_BOX = new Rectangle(100, 30, 13, 66);
 
     /** A staff of 2-pixel lines, a space of 20 pixels, with a flat whose stem is at x=100. */

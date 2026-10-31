@@ -116,6 +116,9 @@ public class SymbolsBuilder
     /** Areas where fine glyphs may be needed. */
     private final List<Rectangle> fineBoxes = new ArrayList<>();
 
+    /** Strict outline candidates, supported only after all explicit tuplets are known. */
+    private final Map<Glyph, Shape> stackedFlagCandidates = new java.util.LinkedHashMap<>();
+
     /** Scale-dependent global constants. */
     private final Parameters params;
 
@@ -200,6 +203,8 @@ public class SymbolsBuilder
         watch.start("processClusters");
         processClusters(systemGraph);
 
+        supportStackedFlags();
+
         // The traditional header parser intentionally stops when a flat sequence changes to
         // sharps (or vice versa). Arabic scores commonly use such mixed signatures. At this
         // stage the trailing sign has been classified by the general symbol classifier, or can
@@ -208,6 +213,42 @@ public class SymbolsBuilder
 
         if (constants.printWatch.isSet()) {
             watch.print();
+        }
+    }
+
+    /** Keep flag recovery away from ambiguous tuplet timing; never lower a neural grade. */
+    private void supportStackedFlags ()
+    {
+        final SIGraph sig = system.getSig();
+        for (Map.Entry<Glyph, Shape> candidate : stackedFlagCandidates.entrySet()) {
+            final Glyph glyph = candidate.getKey();
+            final org.audiveris.omr.sheet.rhythm.MeasureStack stack =
+                    system.getStackAt(glyph.getCenter2D());
+            if (stack == null || !stack.getTuplets().isEmpty()) {
+                continue;
+            }
+            final List<Inter> competitors = new ArrayList<>();
+            Inter flag = null;
+            for (Inter inter : sig.vertexSet()) {
+                if (inter.getGlyph() == glyph) {
+                    competitors.add(inter);
+                    if (inter.getShape() == candidate.getValue()) { flag = inter; }
+                }
+            }
+            final double supportedGrade = Grades.intrinsicRatio * 0.8;
+            if (flag != null) {
+                flag.setGrade(Math.max(flag.getGrade(), supportedGrade));
+            } else {
+                // The factory still requires an ordinary flag/stem link with a
+                // consistent note head and direction before it creates a flag.
+                flag = factory.create(new Evaluation(candidate.getValue(), 0.8), glyph,
+                        system.getClosestStaff(glyph.getCenter2D()));
+                if (flag != null) {
+                    for (Inter other : competitors) {
+                        sig.insertExclusion(other, flag, Exclusion.ExclusionCause.OVERLAP);
+                    }
+                }
+            }
         }
     }
 
@@ -292,6 +333,15 @@ public class SymbolsBuilder
                 constants.maxEvaluationCount.getValue(),
                 Grades.symbolMinGrade,
                 EnumSet.of(Classifier.Condition.CHECKED));
+
+        // Leland's intact three-flag outline can receive a weak neural vote.
+        // Defer support until all tuplet symbols have been created, independently
+        // of cluster visitation order. Confident neural candidates remain intact.
+        final Shape stackedFlag = StackedFlagTemplate.match(glyph.getBuffer(),
+                closestStaff.getSpecificInterline());
+        if (stackedFlag != null && java.util.Arrays.stream(evals).noneMatch(e -> e.grade >= 0.8)) {
+            stackedFlagCandidates.put(glyph, stackedFlag);
+        }
 
         // A ledger line can detach a natural's lower stem and leave a flat-shaped glyph.
         // Require staggered stems on the original page AND a confident natural classifier vote.

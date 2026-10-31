@@ -322,6 +322,16 @@ public class MultipleRestsBuilder
                 continue;
             }
 
+            // A mid-line eighth beam can pass the projected serif test when its
+            // end stems continue below the staff. Such one-sided long strokes are
+            // stems, not the short, centered serifs of a multimeasure rest.
+            if (MultipleRestSerifs.hasEndStems(
+                    sheet.getPicture().getSource(org.audiveris.omr.sheet.Picture.SourceKey.NO_STAFF),
+                    beam.getMedian(), beam.getHeight(), staff.getSpecificInterline(),
+                    sheet.getScale().getMaxStem())) {
+                continue;
+            }
+
             // All tests are OK
             found.put(beam, sidePeaks);
         }

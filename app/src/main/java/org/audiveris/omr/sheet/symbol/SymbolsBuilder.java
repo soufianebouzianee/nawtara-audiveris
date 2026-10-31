@@ -1247,6 +1247,46 @@ public class SymbolsBuilder
         final int margin = (int) Math.rint(interline);
         final boolean[][] ink = inkWithoutStaffLines(page, box.x - margin, box.y,
                 box.width + 2 * margin, box.height, (int) Math.rint(interline));
+        // Recover only slanted stroke edges on removed staff rows. A staff pixel needs
+        // original ink immediately above OR below its whole line band; the shared filter
+        // requires both, which clips a thick diagonal at the staff intersection. This is
+        // local to this detector; all one-stem, thickness, rise and spacing vetoes still run.
+        final boolean[] lineRows = new boolean[box.height];
+        for (int y = 0; y < box.height; y++) {
+            int count = 0;
+            for (int x = -margin; x < box.width + margin; x++) {
+                final int px = box.x + x, py = box.y + y;
+                if (px >= 0 && py >= 0 && px < page.getWidth() && py < page.getHeight()
+                        && page.get(px, py) < INK_LEVEL) { count++; }
+            }
+            lineRows[y] = count > 0.55 * (box.width + 2 * margin);
+        }
+        for (int y = 0; y < box.height; y++) {
+            if (!lineRows[y]) { continue; }
+            final int first = y;
+            while (y + 1 < box.height && lineRows[y + 1]) { y++; }
+            final int last = y;
+            if (last - first + 1 > Math.max(2, (int) Math.rint(interline / 8.0) + 1) + 1) {
+                continue;
+            }
+            for (int x = 0; x < box.width; x++) {
+                final int px = box.x + x;
+                if (px < 0 || px >= page.getWidth()) { continue; }
+                final int top = box.y + first - 1, bottom = box.y + last + 1;
+                final boolean above = first > 0 && top >= 0 && top < page.getHeight()
+                        && page.get(px, top) < INK_LEVEL;
+                final boolean below = last + 1 < box.height && bottom >= 0
+                        && bottom < page.getHeight() && page.get(px, bottom) < INK_LEVEL;
+                if (above || below) {
+                    for (int yy = first; yy <= last; yy++) {
+                        final int py = box.y + yy;
+                        if (py >= 0 && py < page.getHeight() && page.get(px, py) < INK_LEVEL) {
+                            ink[yy][x + margin] = true;
+                        }
+                    }
+                }
+            }
+        }
         final ByteProcessor original = new ByteProcessor(box.width, box.height);
         original.setValue(BACKGROUND); original.fill();
         for (int y = 0; y < box.height; y++) {

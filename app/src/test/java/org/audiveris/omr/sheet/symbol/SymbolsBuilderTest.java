@@ -24,6 +24,108 @@ public class SymbolsBuilderTest
     //--------------------------------------------------------------------------------------------//
     private static final int IL = 20;
 
+    /** CC0: original geometric test drawing; no corpus or engraved music is included. */
+    private static final String FLAT_STAFF_PAGE_PNG =
+            "iVBORw0KGgoAAAANSUhEUgAAAPAAAACRCAAAAADYlmqxAAAB4UlEQVR4nO3awXKjMBAG4abL7//K3somW5XLHmSwJ07rO+SE/9EY" +
+            "IgvQcadFYiRGYiRGYiRGYiRGYiRGYiRGYiRGYiRGYiRGYiRGYiRGYiRGYiRGYiRGYiRGYiRGYiRGYiTG6QFs27atOPZOvF9OYiRG" +
+            "3t/xnEnrAM7PcE9IOZYSb5ROL+9/SR+rXcs7nZ7/BdzfpOHjbMefH7+vTAoy52O4Zzo+vvpd+pCM+Tvc+ysv59lZ+pp+lwPkTfv9" +
+            "tB4grX6ZnLQm+mXof/iKFWbtTn7bttX74StmiceWRxeORSYMTrBOFJ38QfHlFe+zP6C+vuTsgkFiJEZiJEZiJEZiJOa2ePyPfaX2" +
+            "nIaPr7/nBjua4nqNs++EZlN8pMapsQ6nHIuF7he88htNcbnGBbPNZIrLNa56oDyUIjHHyqaW7/tIHjxD4ykSIzESIzES48rB/9Y1" +
+            "51ZJsynOPl1+fYrP3ej381Jcr3J+2T+Zcnugyocrbt5HUiTGhWO/fZMnTs1wig9VOXUpzqbcFqtcs8FqMOW2XOYKgynH3s+2bds7" +
+            "OWqTlsRIjMRIjMRIjMRIjMRIjMRIjMRIjMQ4PYBt27YVx36I98tJjMRIjMRIjMRIjMRIjMRIjMRIjMRIjMQ4PYBX+wOhsFsBbIeg" +
+            "3wAAAABJRU5ErkJggg==";
+
+    private static ByteProcessor flatStaffPage () throws Exception
+    {
+        return new ByteProcessor(javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(
+                java.util.Base64.getDecoder().decode(FLAT_STAFF_PAGE_PNG))));
+    }
+
+    private static List<org.audiveris.omr.sheet.grid.LineInfo> flatStaffLines ()
+    {
+        final List<org.audiveris.omr.sheet.grid.LineInfo> lines = new java.util.ArrayList<>();
+        for (int y : new int[] {40, 61, 82, 103, 124}) {
+            lines.add(new org.audiveris.omr.sheet.StaffLine(List.of(
+                    new java.awt.geom.Point2D.Double(0, y - 0.5),
+                    new java.awt.geom.Point2D.Double(239, y - 0.5)), 6));
+        }
+        return lines;
+    }
+
+    /** Model removal's expanded edge and residual staff ink, as distinct from original ink. */
+    private static ByteProcessor residualFlat (ByteProcessor page, int x)
+    {
+        final ByteProcessor b = blank(18, 53);
+        for (int y = 0; y < 53; y++) {
+            for (int xx = 0; xx < 18; xx++) {
+                final int py = y + 47;
+                if (page.get(x + xx, py) < 140 && !(py >= 59 && py <= 62)
+                        && !(py >= 80 && py <= 83)) {
+                    b.set(xx, y, FOREGROUND);
+                }
+            }
+        }
+        for (int xx = 0; xx <= 3; xx++) { vertical(b, xx, 0, 52); }
+        for (int y = 1; y <= 10; y++) { horizontal(b, 0, 5, y); }
+        for (int y = 12; y <= 15; y++) { horizontal(b, 4, 10, y); }
+        return b;
+    }
+
+    @Test
+    public void staffStubAndExpandedStemEdgeAreNotAFlatSlash () throws Exception
+    {
+        final ByteProcessor page = flatStaffPage();
+        final ByteProcessor glyph = residualFlat(page, 40);
+        assertTrue(SymbolsBuilder.hasSlashRightOfStem(glyph));
+        assertTrue(SymbolsBuilder.hasRightSlashedFlatTopology(glyph));
+        assertFalse(SymbolsBuilder.hasNonStaffFlatSlash(page, new Rectangle(40, 47, 18, 53),
+                glyph, 21, flatStaffLines()));
+    }
+
+    @Test
+    public void genuineFlatSlashesKeepInkBeyondTheStaffRows () throws Exception
+    {
+        final ByteProcessor page = flatStaffPage();
+        for (int x : new int[] {110, 180}) {
+            final ByteProcessor glyph = residualFlat(page, x);
+            assertTrue(SymbolsBuilder.hasSlashRightOfStem(glyph));
+            assertTrue(SymbolsBuilder.hasNonStaffFlatSlash(page, new Rectangle(x, 47, 18, 53),
+                    glyph, 21, flatStaffLines()));
+        }
+    }
+
+    @Test
+    public void aDamagedSlashNeedNotMeetTheGlyphHeightRequirementTwice () throws Exception
+    {
+        final ByteProcessor page = flatStaffPage();
+        final ByteProcessor glyph = residualFlat(page, 110);
+        // The post-removal glyph has a broad slash, but degradation leaves only two
+        // original dark rows outside a line. This is evidence the staff cannot explain.
+        for (int y = 47; y < 65; y++) {
+            for (int x = 115; x < 128; x++) { page.set(x, y, BACKGROUND); }
+        }
+        for (int y = 53; y <= 54; y++) { horizontal(page, 115, 121, y); }
+        assertTrue(SymbolsBuilder.hasSlashRightOfStem(glyph));
+        assertTrue(SymbolsBuilder.hasNonStaffFlatSlash(page, new Rectangle(110, 47, 18, 53),
+                glyph, 21, flatStaffLines()));
+    }
+
+    @Test
+    public void nearbyInkOnOnlyOneSideCannotEraseASlash () throws Exception
+    {
+        final ByteProcessor page = flatStaffPage();
+        // A horizontal slash near the nominal line remains evidence if no line continues
+        // on the right. The guard requires actual page support on both sides.
+        for (int y = 59; y <= 62; y++) {
+            for (int x = 58; x < 80; x++) { page.set(x, y, BACKGROUND); }
+        }
+        for (int y = 57; y <= 62; y++) { horizontal(page, 45, 55, y); }
+        final ByteProcessor glyph = residualFlat(page, 40);
+        assertTrue(SymbolsBuilder.hasNonStaffFlatSlash(page, new Rectangle(40, 47, 18, 53),
+                glyph, 21, flatStaffLines()));
+    }
+
+
     @Test
     public void aWideCrossedHalfFlatNeedsIndependentPitchEvidence ()
     {

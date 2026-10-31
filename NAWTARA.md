@@ -36,6 +36,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-10-30 | When every staff line on a page measures the same thickness (clean exports at low resolution, enlarged), the line thickness limit reaches a slightly thicker line size the page really holds, so staves with a few thicker lines are no longer discarded; the tests run headless |
 | 2026-10-31 | A page on which no staff is found (a lyrics page, a lone short staff) is left out instead of failing the export of the whole book |
 | 2026-10-31 (2) | A half-sharp drawn as a sharp with one stem and slanted bars (as MuseScore prints it) is read on images: its bars are measured on each side of the stem on the original page, and a second stem refuses it |
+| 2026-10-31 (3) | A plain flat whose stem crosses a staff line is no longer read as a half-flat when staff removal leaves a stub of the line beside its stem: the slash must show on the original page as ink the staff lines do not explain |
 
 Files modified or added (all under `app/`):
 

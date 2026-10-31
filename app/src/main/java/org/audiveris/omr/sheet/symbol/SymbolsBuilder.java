@@ -46,6 +46,7 @@ import org.audiveris.omr.sheet.Scale;
 import org.audiveris.omr.sheet.Sheet;
 import org.audiveris.omr.sheet.Staff;
 import org.audiveris.omr.sheet.SystemInfo;
+import org.audiveris.omr.sheet.grid.LineInfo;
 import org.audiveris.omr.sig.SIGraph;
 import org.audiveris.omr.sig.inter.AlterInter;
 import org.audiveris.omr.sig.inter.HeadInter;
@@ -439,6 +440,12 @@ public class SymbolsBuilder
             if (hasConfidentStandardSharp(evals) || isReadAsRest(evals)) {
                 return null;
             }
+            if (classifiedFlat && !confirmRightFlatSlash(glyph, staff)) {
+                // This guard resolves a classifier-confirmed flat's ambiguous right slash.
+                // Keep the flat in the same candidate slot; other topology-only candidates
+                // retain their existing interpretation and reduction support.
+                candidate = Shape.FLAT;
+            }
         }
 
         final Rectangle box = glyph.getBounds();
@@ -447,7 +454,7 @@ public class SymbolsBuilder
         final int xGapMax = scale.toPixels(AlterHeadRelation.getXOutGapMaximum(profile));
         final int yGapMax = scale.toPixels(AlterHeadRelation.getYGapMaximum(profile));
         final int accidentalY = wideBowlY != null ? box.y + (int) Math.rint(wideBowlY)
-                : (candidate == Shape.QUARTER_FLAT)
+                : ((candidate == Shape.QUARTER_FLAT) || (candidate == Shape.FLAT))
                         ? box.y + ((3 * box.height) / 4) : box.y + (box.height / 2);
         final Point accidentalPoint = new Point(box.x + box.width, accidentalY);
 
@@ -860,6 +867,14 @@ public class SymbolsBuilder
                             keyAlter.getStaff().getSpecificInterline());
                     candidate = crossingVerdict(candidate, ink, first);
                 }
+            }
+
+            // A key already has the established page-side crossing verdict above. Preserve
+            // that positive evidence when staff removal clipped the slash on its right.
+            if ((candidate == Shape.QUARTER_FLAT)
+                    && ((ink == null) || (ink.leftShare() < SLASH_ABSENT))
+                    && !confirmRightFlatSlash(glyph, keyAlter.getStaff())) {
+                candidate = null;
             }
 
             dumpGlyph("key", keyAlter.getStaff(), keyAlter.getIntegerPitch(), glyph,
@@ -1714,17 +1729,23 @@ public class SymbolsBuilder
      */
     static boolean hasSlashRightOfStem (ByteProcessor buffer)
     {
+        return flatSlashRows(buffer, buffer) >= (SLASH_ROWS_MIN * buffer.getHeight());
+    }
+
+    /** Measure slash ink while retaining the glyph's stem and long-column exclusions. */
+    private static int flatSlashRows (ByteProcessor buffer, ByteProcessor slashInk)
+    {
         final int width = buffer.getWidth();
         final int height = buffer.getHeight();
 
         if ((width < 6) || (height < 20)) {
-            return false;
+            return 0;
         }
 
         final int[] stem = stemColumns(buffer);
 
         if (stem == null) {
-            return false;
+            return 0;
         }
 
         final int stemRight = stem[1];
@@ -1753,14 +1774,96 @@ public class SymbolsBuilder
                     continue;
                 }
 
-                if (buffer.get(x, y) != BACKGROUND) {
+                if (slashInk.get(x, y) != BACKGROUND) {
                     slashRows++;
                     break;
                 }
             }
         }
 
-        return slashRows >= (SLASH_ROWS_MIN * height);
+        return slashRows;
+    }
+
+    /** Keep crossed-flat evidence; confirm a residual right slash against the original page. */
+    private boolean confirmRightFlatSlash (Glyph glyph, Staff staff)
+    {
+        final ByteProcessor buffer = glyph.getBuffer();
+        return !hasSlashRightOfStem(buffer) || hasCrossedFlatTopology(buffer)
+                || hasNonStaffFlatSlash(sheet.getPicture().getSource(Picture.SourceKey.GRAY),
+                        glyph.getBounds(), buffer, staff.getSpecificInterline(), staff.getLines());
+    }
+
+    /**
+     * Confirm the right slash in original grey ink, excluding rows explained by a known staff
+     * line continuing on both sides of the glyph. Staff removal can leave horizontal stubs and
+     * expand the stem's edge; neither is evidence for a slash on the original page. Use the same
+     * stem and search region as the glyph check, without re-estimating the stem from a crop
+     * containing staff lines. The glyph has already met the slash-row requirement: this is only
+     * a veto when no original slash ink survives off the staff rows. Requiring that full height
+     * a second time would discard real thin or JPEG-damaged slashes crossing a staff line.
+     *
+     * @param page original grey page
+     * @param box glyph bounds on the page
+     * @param glyph post-removal glyph
+     * @param interline staff spacing
+     * @param lines the staff's actual line splines
+     * @return true if any original right-slash ink is not explained by staff lines
+     */
+    static boolean hasNonStaffFlatSlash (ByteProcessor page, Rectangle box, ByteProcessor glyph,
+                                         int interline, List<LineInfo> lines)
+    {
+        // Missing page context is not evidence against an existing reading.
+        if ((page == null) || (interline <= 0) || (lines == null) || lines.isEmpty()) {
+            return true;
+        }
+        final ByteProcessor slashInk = new ByteProcessor(box.width, box.height);
+        slashInk.setValue(BACKGROUND);
+        slashInk.fill();
+        for (int y = 0; y < box.height / 3; y++) {
+            for (int x = 0; x < box.width; x++) {
+                final int px = box.x + x;
+                final int py = box.y + y;
+                if ((px < 0) || (py < 0) || (px >= page.getWidth())
+                        || (py >= page.getHeight()) || (page.get(px, py) >= INK_LEVEL)) {
+                    continue;
+                }
+                boolean staffInk = false;
+                for (LineInfo line : lines) {
+                    final double offset = py - line.yAt((double) px);
+                    if (Math.abs(offset) > Math.ceil(line.getThickness() / 2.0) + 1) {
+                        continue;
+                    }
+                    // Follow the spline to either side: nearby note/accidental ink on one
+                    // side alone must not erase a slash. Measure actual dark rows, not a
+                    // fixed interline-wide mask around the nominal line position.
+                    if (lineContinues(page, line, offset, box.x - interline, box.x)
+                            && lineContinues(page, line, offset,
+                                    box.x + box.width, box.x + box.width + interline)) {
+                        staffInk = true;
+                        break;
+                    }
+                }
+                if (!staffInk) {
+                    slashInk.set(x, y, FOREGROUND);
+                }
+            }
+        }
+        return flatSlashRows(glyph, slashInk) > 0;
+    }
+
+    /** A majority of a staff-space sample must support this row on each side separately. */
+    private static boolean lineContinues (ByteProcessor page, LineInfo line, double offset,
+                                           int from, int to)
+    {
+        int ink = 0;
+        for (int x = from; x < to; x++) {
+            final int y = (int) Math.rint(line.yAt((double) x) + offset);
+            if ((x >= 0) && (x < page.getWidth()) && (y >= 0) && (y < page.getHeight())
+                    && (page.get(x, y) < INK_LEVEL)) {
+                ink++;
+            }
+        }
+        return ink > (to - from) / 2;
     }
 
     /** Share of a flat's height its slash must fill beside the stem (see hasSlashRightOfStem). */

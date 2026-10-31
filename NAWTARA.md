@@ -39,6 +39,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-10-31 (3) | A plain flat whose stem crosses a staff line is no longer read as a half-flat when staff removal leaves a stub of the line beside its stem: the slash must show on the original page as ink the staff lines do not explain |
 | 2026-10-31 (4) | A key's first half-flat whose slash lies almost entirely right of its stem is kept when that slash shows on the page as ink the staff lines do not explain; a half-flat in a bar that links to no note is pitched from its enclosed bowl, so a taller sign is no longer read a step high |
 | 2026-10-31 (5) | A one-stem half-sharp on the lowest space (F) is read on images: where its slanted bars cross a staff line, the original ink is kept when the stroke continues above or below the line |
+| 2026-10-31 (6) | A header time signature with a two-digit number (10/8, the samai metre; any 10 to 19) is read on images: a printed 1 is joined with the aligned digit beside it, the zero recognised by its open centre even when staff removal splits it |
 
 Files modified or added (all under `app/`):
 

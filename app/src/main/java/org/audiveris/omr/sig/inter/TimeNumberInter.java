@@ -34,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.awt.Point;
+import java.awt.Rectangle;
 
 import javax.xml.bind.annotation.XmlAttribute;
 import javax.xml.bind.annotation.XmlRootElement;
@@ -89,6 +90,13 @@ public class TimeNumberInter
     }
 
     //~ Methods ------------------------------------------------------------------------------------
+
+    /** A composed number has no single classifier shape to supply its symbol bounds. */
+    @Override
+    public Rectangle getSymbolBounds (int interline)
+    {
+        return (shape == Shape.NUMBER_CUSTOM) ? getBounds() : super.getSymbolBounds(interline);
+    }
 
     //-----------//
     // getEditor //

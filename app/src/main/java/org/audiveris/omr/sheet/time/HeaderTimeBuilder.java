@@ -431,6 +431,18 @@ public class HeaderTimeBuilder
         HalfAdapter adapter = new HalfAdapter(half, parts);
         adapters.put(half, adapter);
         new GlyphCluster(adapter, null).decompose();
+        final List<TimeNumberInter> doubles = TwoDigitTime.find(parts, staff);
+        for (TimeNumberInter number : doubles) {
+            if (adapter.bestMap.values().stream().anyMatch(inter ->
+                    ((TimeNumberInter) inter).getValue().equals(number.getValue())
+                            && inter.getBounds().intersects(number.getBounds()))) {
+                continue;
+            }
+            adapter.bestMap.values().removeIf(inter -> number.getBounds().contains(inter.getBounds()));
+            number.setStaff(staff);
+            sig.addVertex(number);
+            inters.add(number);
+        }
         logger.debug(
                 "Staff#{} {} {} trials:{}",
                 staff.getId(),

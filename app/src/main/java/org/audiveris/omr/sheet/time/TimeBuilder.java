@@ -247,11 +247,16 @@ public abstract class TimeBuilder
                 // Make sure top & bottom are abscissa-wise compatible
                 int dx = bottom.getCenter().x - topX;
 
-                if (Math.abs(dx) <= params.maxHalvesDx) {
+                final boolean composed = top.getShape() == Shape.NUMBER_CUSTOM
+                        || bottom.getShape() == Shape.NUMBER_CUSTOM;
+                final int maxDx = composed ? staff.getSpecificInterline() / 2 : params.maxHalvesDx;
+                if (Math.abs(dx) <= maxDx) {
                     // Restrict num/den pairs to supported combinations
                     TimeRational nd = new TimeRational(top.getValue(), bottom.getValue());
 
-                    if (AbstractTimeInter.isSupported(nd)) {
+                    if (AbstractTimeInter.isSupported(nd)
+                            || top.getShape() == Shape.NUMBER_CUSTOM
+                            || bottom.getShape() == Shape.NUMBER_CUSTOM) {
                         // Halves support each other
                         sig.addEdge(top, bottom, new TimeTopBottomRelation());
                     } else {

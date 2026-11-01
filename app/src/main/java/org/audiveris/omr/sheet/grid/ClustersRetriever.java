@@ -847,7 +847,8 @@ public class ClustersRetriever
             }
 
             // Short isolated?
-            if (cluster.getTrueLength() < minLength) {
+            if (cluster.getTrueLength() < minLength
+                    && !ShortStaffCheck.isSupported(sheet, cluster, clusters)) {
                 logger.info("Destroying spurious {}", cluster);
                 clusters.remove(cluster);
             } else {

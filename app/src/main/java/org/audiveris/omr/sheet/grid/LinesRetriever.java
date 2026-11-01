@@ -1033,8 +1033,9 @@ public class LinesRetriever
     {
         // Purge all too short clusters
         final List<LineCluster> shortClusters = allClusters.stream() //
-                .filter(cl -> cl.getBounds().width < params.minStaffLength) //
-                .peek(cl -> logger.debug("Too short {} at {}", cl, cl.getBounds())) //
+                .filter(cl -> cl.getBounds().width < params.minStaffLength
+                        && !ShortStaffCheck.isSupported(sheet, cl, allClusters)) //
+                .peek(cl -> logger.info("Too short {} at {}", cl, cl.getBounds())) //
                 .collect(Collectors.toList());
         allClusters.removeAll(shortClusters);
 

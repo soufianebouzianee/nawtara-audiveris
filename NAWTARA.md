@@ -42,6 +42,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-10-31 (6) | A header time signature with a two-digit number (10/8, the samai metre; any 10 to 19) is read on images: a printed 1 is joined with the aligned digit beside it, the zero recognised by its open centre even when staff removal splits it |
 | 2026-10-31 (7) | Leland's three-flag stack (32nd notes) is read on images when its whole outline matches and its stem links as usual; an eighth beam whose stems run down to ledger notes is no longer taken for a multimeasure rest |
 | 2026-10-31 (8) | A two-digit time change (10/8 to 19/x) printed right after a barline is read when the same digits line up on every staff of the system; the false notes made from its digits are removed |
+| 2026-11-01 | A last line holding a single bar is no longer thrown away as too short to be a staff: it is kept when it lies below every other staff, lines up with the one above, and the page shows five continuous evenly spaced lines, a closing barline and notes |
 
 Files modified or added (all under `app/`):
 
@@ -61,6 +62,9 @@ Files modified or added (all under `app/`):
 - `app/src/main/java/org/audiveris/omr/sheet/beam/BeamsBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/clef/ClefBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/grid/BarAccidentalInk.java`
+- `app/src/main/java/org/audiveris/omr/sheet/grid/ClustersRetriever.java`
+- `app/src/main/java/org/audiveris/omr/sheet/grid/LinesRetriever.java`
+- `app/src/main/java/org/audiveris/omr/sheet/grid/ShortStaffCheck.java`
 - `app/src/main/java/org/audiveris/omr/sheet/grid/StaffProjectionRange.java`
 - `app/src/main/java/org/audiveris/omr/sheet/grid/StaffProjector.java`
 - `app/src/main/java/org/audiveris/omr/sheet/header/HeadersStep.java`
@@ -89,6 +93,7 @@ Files modified or added (all under `app/`):
 - `app/src/test/java/org/audiveris/omr/score/MusicXMLTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/beam/BeamHookBordersTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/grid/BarAccidentalInkTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/grid/ShortStaffCheckTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/grid/StaffProjectionRangeTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/MixedKeyOwnershipTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/SplitRestRecoveryTest.java`

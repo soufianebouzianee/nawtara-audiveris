@@ -24,6 +24,8 @@ package org.audiveris.omr.sheet.time;
 import org.audiveris.omr.sheet.Staff;
 import org.audiveris.omr.sheet.SystemInfo;
 import org.audiveris.omr.sig.inter.AbstractTimeInter;
+import org.audiveris.omr.constant.Constant;
+import org.audiveris.omr.constant.ConstantSet;
 import org.audiveris.omr.util.ChartPlotter;
 
 /**
@@ -35,6 +37,8 @@ import org.audiveris.omr.util.ChartPlotter;
 public class HeaderTimeColumn
         extends TimeColumn
 {
+    private static final Constants constants = new Constants();
+
     //~ Constructors -------------------------------------------------------------------------------
 
     /**
@@ -86,6 +90,29 @@ public class HeaderTimeColumn
         } else {
             return null;
         }
+    }
+
+    //--------------//
+    // acceptsGrade //
+    //--------------//
+    /**
+     * A time signature in the header of any system but the sheet's first must be read
+     * with real confidence.
+     * <p>
+     * A later header rarely prints a time signature, and when it does it is printed as
+     * clearly as the first one (about 0.95 here). A weak candidate there is most often the
+     * key signature's accidental, or a stain across it, classified as a whole time symbol:
+     * a single flat read as 6/8 at 0.15-0.42 turned every following bar of a 4/4 piece
+     * to 6/8 (tal-el-sahar).
+     */
+    @Override
+    protected boolean acceptsGrade (double grade)
+    {
+        if (system == system.getSheet().getSystems().get(0)) {
+            return true;
+        }
+
+        return grade >= constants.minLaterHeaderGrade.getValue();
     }
 
     @Override
@@ -178,5 +205,18 @@ public class HeaderTimeColumn
         } else {
             return -1;
         }
+    }
+
+    //~ Inner Classes ------------------------------------------------------------------------------
+
+    //-----------//
+    // Constants //
+    //-----------//
+    private static class Constants
+            extends ConstantSet
+    {
+        private final Constant.Ratio minLaterHeaderGrade = new Constant.Ratio(
+                0.5,
+                "Minimum mean grade for a time signature in a later system header");
     }
 }

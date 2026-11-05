@@ -179,6 +179,13 @@ public abstract class TimeColumn
             return false; // Invalid column
         }
 
+        if (!acceptsGrade(bestGrade)) {
+            timeValue = null;
+            cleanup();
+
+            return false; // Too weak for where it stands
+        }
+
         // Forward the chosen time to each staff
         final AbstractTimeInter[] bestVector = vectors.get(timeValue);
         final List<Staff> staves = system.getStaves();
@@ -195,6 +202,21 @@ public abstract class TimeColumn
 
         logger.debug("System#{} TimeSignature: {}", system.getId(), timeValue);
 
+        return true;
+    }
+
+    //--------------//
+    // acceptsGrade //
+    //--------------//
+    /**
+     * Report whether the best time value, with its mean grade over the staves, is strong
+     * enough to be kept in this column.
+     *
+     * @param grade mean grade of the best time value
+     * @return true by default
+     */
+    protected boolean acceptsGrade (double grade)
+    {
         return true;
     }
 

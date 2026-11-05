@@ -43,6 +43,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-10-31 (7) | Leland's three-flag stack (32nd notes) is read on images when its whole outline matches and its stem links as usual; an eighth beam whose stems run down to ledger notes is no longer taken for a multimeasure rest |
 | 2026-10-31 (8) | A two-digit time change (10/8 to 19/x) printed right after a barline is read when the same digits line up on every staff of the system; the false notes made from its digits are removed |
 | 2026-11-01 | A last line holding a single bar is no longer thrown away as too short to be a staff: it is kept when it lies below every other staff, lines up with the one above, and the page shows five continuous evenly spaced lines, a closing barline and notes |
+| 2026-11-05 | A time signature in the header of a later system is kept only when it reads with real confidence (mean grade 0.5): a key-signature flat at the start of a line was taken for a weak 6/8 and turned the rest of a 4/4 piece to 6/8 |
 
 Files modified or added (all under `app/`):
 
@@ -82,6 +83,8 @@ Files modified or added (all under `app/`):
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/SymbolsStep.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/TiedDotRecovery.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/TupletFragments.java`
+- `app/src/main/java/org/audiveris/omr/sheet/time/HeaderTimeColumn.java`
+- `app/src/main/java/org/audiveris/omr/sheet/time/TimeColumn.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/AbstractPitchedInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/AlterInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/HeadInter.java`

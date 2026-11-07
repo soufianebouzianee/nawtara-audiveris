@@ -44,6 +44,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-10-31 (8) | A two-digit time change (10/8 to 19/x) printed right after a barline is read when the same digits line up on every staff of the system; the false notes made from its digits are removed |
 | 2026-11-01 | A last line holding a single bar is no longer thrown away as too short to be a staff: it is kept when it lies below every other staff, lines up with the one above, and the page shows five continuous evenly spaced lines, a closing barline and notes |
 | 2026-11-05 | A time signature in the header of a later system is kept only when it reads with real confidence (mean grade 0.5): a key-signature flat at the start of a line was taken for a weak 6/8 and turned the rest of a 4/4 piece to 6/8 |
+| 2026-11-07 | A printed 9 in a header time signature is read as 9, not 6 (9/8 had been read as 6/8): the original page ink inside the digit decides, by which outer edge runs straight and where its loop lies; a later flat of a key signature no longer counts the previous sign's own ink as its slash, so a plain key flat is not read as a half-flat at low resolution |
 
 Files modified or added (all under `app/`):
 
@@ -61,6 +62,8 @@ Files modified or added (all under `app/`):
 - `app/src/main/java/org/audiveris/omr/sheet/beam/BeamHookBorders.java`
 - `app/src/main/java/org/audiveris/omr/sheet/beam/BeamStructure.java`
 - `app/src/main/java/org/audiveris/omr/sheet/beam/BeamsBuilder.java`
+- `app/src/main/java/org/audiveris/omr/sheet/beam/MultipleRestSerifs.java`
+- `app/src/main/java/org/audiveris/omr/sheet/beam/MultipleRestsBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/clef/ClefBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/grid/BarAccidentalInk.java`
 - `app/src/main/java/org/audiveris/omr/sheet/grid/ClustersRetriever.java`
@@ -77,36 +80,46 @@ Files modified or added (all under `app/`):
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/InterFactory.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/MixedKeyOwnership.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/SplitRestRecovery.java`
+- `app/src/main/java/org/audiveris/omr/sheet/symbol/StackedFlagTemplate.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/StemFlagFragments.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/SymbolsBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/SymbolsLinker.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/SymbolsStep.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/TiedDotRecovery.java`
 - `app/src/main/java/org/audiveris/omr/sheet/symbol/TupletFragments.java`
+- `app/src/main/java/org/audiveris/omr/sheet/time/BarlineTime.java`
+- `app/src/main/java/org/audiveris/omr/sheet/time/HeaderTimeBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/time/HeaderTimeColumn.java`
+- `app/src/main/java/org/audiveris/omr/sheet/time/TimeBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/time/TimeColumn.java`
+- `app/src/main/java/org/audiveris/omr/sheet/time/TwoDigitTime.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/AbstractPitchedInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/AlterInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/HeadInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/KeyAlterInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/KeyInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/SmallChordInter.java`
+- `app/src/main/java/org/audiveris/omr/sig/inter/TimeNumberInter.java`
 - `app/src/main/java/org/audiveris/omr/text/tesseract/TesseractOrder.java`
 - `app/src/test/java/org/audiveris/omr/glyph/GlyphClusterTest.java`
 - `app/src/test/java/org/audiveris/omr/score/MusicXMLTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/BookNoMusicTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/beam/BeamHookBordersTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/beam/MultipleRestSerifsTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/grid/BarAccidentalInkTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/grid/ShortStaffCheckTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/grid/StaffProjectionRangeTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/MixedKeyOwnershipTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/SplitRestRecoveryTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/symbol/StackedFlagTemplateTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/StemFlagFragmentsTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/SymbolsBuilderTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/SymbolsStepTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/TiedDotRecoveryTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/TupletFragmentsTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/WideQuarterFlatBowlTest.java`
-- `app/src/test/java/org/audiveris/omr/sheet/BookNoMusicTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/time/BarlineTimeTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/time/TwoDigitTimeTest.java`
 - `app/src/test/java/org/audiveris/omr/sig/inter/AlterLinkPointTest.java`
 - `app/src/test/java/org/audiveris/omr/sig/inter/ArabicKeyShapeTest.java`
 

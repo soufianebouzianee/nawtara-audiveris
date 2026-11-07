@@ -934,7 +934,11 @@ public class SymbolsBuilder
                             page,
                             glyph.getBounds(),
                             glyph.getBuffer(),
-                            keyAlter.getStaff().getSpecificInterline());
+                            keyAlter.getStaff().getSpecificInterline(),
+                            previousSign(keyAlter) == null ? null
+                                    : previousSign(keyAlter).getBuffer(),
+                            previousSign(keyAlter) == null ? null
+                                    : previousSign(keyAlter).getBounds());
                     final Shape before = candidate;
                     candidate = crossingVerdict(candidate, ink, first);
 
@@ -2104,6 +2108,28 @@ public class SymbolsBuilder
                                   ByteProcessor glyph,
                                   int interline)
     {
+        return inkBesideStem(page, box, glyph, interline, null, null);
+    }
+
+    /**
+     * Same measure, not counting as slash the ink that is the previous key sign's own.
+     * <p>
+     * A key's later flat stands a few pixels from the bowl of the sign before it, and at 150 dpi
+     * that bowl falls inside the slash window (Tosti's five-flat key: the G flat read as a
+     * half-flat on every system). Page ink within two pixels of the previous sign's glyph ink is
+     * that sign's. A slash that merely passes under its columns, on rows the sign does not ink,
+     * still counts (set-el-habayeb and ya-shadi-el-alhan lost half-flats to a column mask).
+     *
+     * @param previous raster of the previous key sign, or null
+     * @param previousBox its bounds on the page
+     */
+    static StemInk inkBesideStem (ByteProcessor page,
+                                  Rectangle box,
+                                  ByteProcessor glyph,
+                                  int interline,
+                                  ByteProcessor previous,
+                                  Rectangle previousBox)
+    {
         final int[] stem = stemColumns(glyph);
 
         if ((stem == null) || (interline <= 0)) {
@@ -2127,7 +2153,7 @@ public class SymbolsBuilder
 
         for (int y = 0; y < upper; y++) {
             for (int x = from; x < (stemColumn - 1); x++) {
-                if (band[y][x]) {
+                if (band[y][x] && !isPreviousSignInk(previous, previousBox, interline, x0 + x, box.y + y)) {
                     rows++;
                     break;
                 }
@@ -2298,6 +2324,53 @@ public class SymbolsBuilder
 
     /** Above this share of ink beside its stem, a later key sign is a barline's (see above). */
     private static final double NOT_A_SIGN = 0.45;
+
+    //--------------//
+    // previousSign //
+    //--------------//
+    /** Glyph of the key sign before this one, or null for the first (or none). */
+    private static Glyph previousSign (KeyAlterInter keyAlter)
+    {
+        if (keyAlter.getEnsemble() instanceof KeyInter key) {
+            final List<Inter> members = key.getMembers();
+            final int index = members.indexOf(keyAlter);
+
+            if (index > 0) {
+                return members.get(index - 1).getGlyph();
+            }
+        }
+
+        return null;
+    }
+
+    /** Whether the page pixel lies within two pixels of the previous sign's glyph ink. */
+    static boolean isPreviousSignInk (ByteProcessor previous,
+                                      Rectangle box,
+                                      int interline,
+                                      int px,
+                                      int py)
+    {
+        // A previous "sign" much wider than one sign is the sign merged with something touching
+        // it, such as the next sign's slash (halfflat-key at 150 dpi: 37 px for an 18 px flat):
+        // its ink cannot be told from the slash, so none of it is set aside.
+        if ((previous == null) || (box == null) || (box.width > (1.3 * interline))) {
+            return false;
+        }
+
+        for (int dy = -2; dy <= 2; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                final int x = px + dx - box.x;
+                final int y = py + dy - box.y;
+
+                if ((x >= 0) && (y >= 0) && (x < previous.getWidth()) && (y < previous.getHeight())
+                        && (previous.get(x, y) != BACKGROUND)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 
     //--------------//
     // isFirstOfKey //

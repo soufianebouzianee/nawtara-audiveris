@@ -40,6 +40,96 @@ public class TwoDigitTimeTest
         assertEquals("", failures.toString());
     }
 
+    /** Calibration: the six/nine ink test on the single-digit 6 and 9 strips. */
+    @Test
+    public void sixIsNotNine () throws Exception
+    {
+        final StringBuilder failures = new StringBuilder();
+        for (String[] sample : SAMPLES) {
+            final String name = sample[0];
+            final boolean six = name.endsWith("-6");
+            final boolean nine = name.endsWith("-9");
+            if (!six && !nine) {
+                continue;
+            }
+            final ByteProcessor ink = new ByteProcessor(ImageIO.read(new ByteArrayInputStream(
+                    Base64.getDecoder().decode(sample[2]))));
+            final var parts = GlyphFactory.buildGlyphs(
+                    new RunTableFactory(Orientation.VERTICAL).createTable(ink), new Point());
+            for (var part : parts) {
+                if (part.getBounds().height < 0.8 * ink.getHeight()) continue;
+                final Integer got = TwoDigitTime.sixOrNine(part.getBuffer());
+                
+                if (got == null || got != (six ? 6 : 9)) failures.append(name + " read " + got + "\n");
+            }
+        }
+        assertEquals("", failures.toString());
+    }
+
+    /** CC0 Paladilhe 9/8 numerator at 150 dpi: staff lines cut the loop, the right edge is straight. */
+    private static final String[] NINE_150 = {
+            "#################################",
+            "#################################",
+            "#################################",
+            "............##########...........",
+            "............##########...........",
+            "........##################.......",
+            "........##################.......",
+            "......########......########.....",
+            "......########......########.....",
+            "....########........##########...",
+            "....########........##########...",
+            "..##########..........########...",
+            "..##########..........########...",
+            "..##########..........##########.",
+            "..##########..........##########.",
+            "..##########..........##########.",
+            "..##########..........##########.",
+            "..##########..........##########.",
+            "..##########..........##########.",
+            "#################################",
+            "#################################",
+            "#################################",
+            "#################################",
+            "......##########################.",
+            "......##########################.",
+            "..........########....##########.",
+            "..........########....##########.",
+            "......####............##########.",
+            "......####............##########.",
+            "....########..........##########.",
+            "....########..........##########.",
+            "..############........########...",
+            "..############........########...",
+            "..############........########...",
+            "..############........########...",
+            "....########........########.....",
+            "....########........########.....",
+            "....######........########.......",
+            "....######........########.......",
+            "......##################.........",
+            "......##################.........",
+            "#################################"
+    };
+
+    @Test
+    public void nineAt150DpiAndItsRotationAsSix ()
+    {
+        final int w = NINE_150[0].length();
+        final int h = NINE_150.length;
+        final ByteProcessor nine = new ByteProcessor(w, h);
+        final ByteProcessor six = new ByteProcessor(w, h);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                final int v = NINE_150[y].charAt(x) == '#' ? 0 : 255;
+                nine.set(x, y, v);
+                six.set(w - 1 - x, h - 1 - y, v);
+            }
+        }
+        assertEquals(Integer.valueOf(9), TwoDigitTime.sixOrNine(nine));
+        assertEquals(Integer.valueOf(6), TwoDigitTime.sixOrNine(six));
+    }
+
     /** CC0 drawing: the left wall of a clipped zero is not a right-facing 3. */
     @Test
     public void rejectZeroWallAsThree ()

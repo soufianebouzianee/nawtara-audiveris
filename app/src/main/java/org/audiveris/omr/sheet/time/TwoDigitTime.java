@@ -201,6 +201,204 @@ final class TwoDigitTime
      * A zero has two walls around a continuous central opening. Staff removal may open its
      * top and bottom; a six lacks the upper right wall and an eight closes the middle.
      */
+    /**
+     * Tell a printed 6 from a printed 9 on a glyph's ink: the closed loop of a 6 sits in the
+     * lower half of the digit, the loop of a 9 in the upper half (largest enclosed hole).
+     *
+     * @param ink glyph buffer, foreground 0
+     * @return 6, 9, or null when the ink does not say
+     */
+    static Integer holeSixOrNine (ByteProcessor ink)
+    {
+        final int w = ink.getWidth();
+        final int h = ink.getHeight();
+        if (w < 5 || h < 8) {
+            return null;
+        }
+        // Background connected to the border, on a one-pixel padded grid.
+        final int pw = w + 2;
+        final int ph = h + 2;
+        final boolean[] outside = new boolean[pw * ph];
+        final java.util.ArrayDeque<int[]> queue = new java.util.ArrayDeque<>();
+        queue.add(new int[]{0, 0});
+        outside[0] = true;
+        final int[][] steps = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        while (!queue.isEmpty()) {
+            final int[] p = queue.poll();
+            for (int[] d : steps) {
+                final int x = p[0] + d[0];
+                final int y = p[1] + d[1];
+                if (x < 0 || y < 0 || x >= pw || y >= ph || outside[y * pw + x]) {
+                    continue;
+                }
+                final boolean inkPixel = x >= 1 && y >= 1 && x <= w && y <= h
+                        && ink.get(x - 1, y - 1) == 0;
+                if (!inkPixel) {
+                    outside[y * pw + x] = true;
+                    queue.add(new int[]{x, y});
+                }
+            }
+        }
+        // Enclosed background components: keep the largest one.
+        final int[] label = new int[pw * ph];
+        int bestArea = 0;
+        double bestY = 0;
+        int next = 0;
+        for (int y0 = 1; y0 <= h; y0++) {
+            for (int x0 = 1; x0 <= w; x0++) {
+                if (outside[y0 * pw + x0] || ink.get(x0 - 1, y0 - 1) == 0 || label[y0 * pw + x0] != 0) {
+                    continue;
+                }
+                next++;
+                int area = 0;
+                double sy = 0;
+                queue.clear();
+                queue.add(new int[]{x0, y0});
+                label[y0 * pw + x0] = next;
+                while (!queue.isEmpty()) {
+                    final int[] p = queue.poll();
+                    area++;
+                    sy += p[1] - 1;
+                    for (int[] d : steps) {
+                        final int x = p[0] + d[0];
+                        final int y = p[1] + d[1];
+                        if (x < 1 || y < 1 || x > w || y > h || outside[y * pw + x]
+                                || label[y * pw + x] != 0 || ink.get(x - 1, y - 1) == 0) {
+                            continue;
+                        }
+                        label[y * pw + x] = next;
+                        queue.add(new int[]{x, y});
+                    }
+                }
+                if (area > bestArea) {
+                    bestArea = area;
+                    bestY = sy / area;
+                }
+            }
+        }
+        if (bestArea >= 0.04 * w * h) {
+            final double c = (bestY + 0.5) / h;
+            // Measured on the 6 and 9 strips of all five paths: 0.71-0.72 and 0.26-0.27.
+            if (c < 0.45) {
+                return 9;
+            }
+            if (c > 0.55) {
+                return 6;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Tell 6 from 9 by which outer edge runs straight: the stem of a 9 keeps the right edge
+     * nearly vertical while the left edge swings from bowl to tail, and a 6 is the mirror image.
+     * Rows crossed by a staff line (inked from side to side) are skipped, so the cue does not
+     * depend on the loop being closed.
+     *
+     * @param ink glyph buffer, foreground 0
+     * @return 6, 9, or null when neither edge is clearly straighter
+     */
+    static Integer straightEdge (ByteProcessor ink)
+    {
+        final int w = ink.getWidth();
+        final int h = ink.getHeight();
+        if (w < 8 || h < 12) {
+            return null;
+        }
+        final int y0 = (int) (0.2 * h);
+        final int y1 = (int) (0.85 * h);
+        int minL = Integer.MAX_VALUE;
+        int maxL = -1;
+        int minR = Integer.MAX_VALUE;
+        int maxR = -1;
+        int rows = 0;
+        for (int y = y0; y < y1; y++) {
+            int left = -1;
+            int right = -1;
+            for (int x = 0; x < w; x++) {
+                if (ink.get(x, y) == 0) {
+                    if (left < 0) {
+                        left = x;
+                    }
+                    right = x;
+                }
+            }
+            if (left < 0 || (left == 0 && right == w - 1)) {
+                continue; // empty row, or a staff line through the glyph
+            }
+            rows++;
+            minL = Math.min(minL, left);
+            maxL = Math.max(maxL, left);
+            minR = Math.min(minR, right);
+            maxR = Math.max(maxR, right);
+        }
+        if (rows < 0.4 * (y1 - y0)) {
+            return null;
+        }
+        final int spreadL = maxL - minL;
+        final int spreadR = maxR - minR;
+        final int margin = Math.max(2, (int) Math.rint(0.1 * w));
+        if (spreadR + margin <= spreadL) {
+            return 9;
+        }
+        if (spreadL + margin <= spreadR) {
+            return 6;
+        }
+        return null;
+    }
+
+    /**
+     * Tell a printed 6 from a printed 9 on a glyph's ink: the straight outer edge first, then
+     * the largest enclosed hole when the edges do not say.
+     *
+     * @param ink glyph buffer, foreground 0
+     * @return 6, 9, or null when the ink does not say
+     */
+    static Integer sixOrNine (ByteProcessor ink)
+    {
+        final Integer edge = straightEdge(ink);
+        return (edge != null) ? edge : holeSixOrNine(ink);
+    }
+
+    /**
+     * The top number of a whole time glyph (a numerator stacked on a denominator),
+     * cut at the emptiest row near the middle, judged 6 or 9 by its ink.
+     *
+     * @param ink whole time glyph buffer, foreground 0
+     * @return 6, 9 or null
+     */
+    static Integer topSixOrNine (ByteProcessor ink)
+    {
+        final int w = ink.getWidth();
+        final int h = ink.getHeight();
+        int cut = h / 2;
+        int least = Integer.MAX_VALUE;
+        for (int y = (int) (0.4 * h); y <= (int) (0.6 * h); y++) {
+            int count = 0;
+            for (int x = 0; x < w; x++) {
+                if (ink.get(x, y) == 0) {
+                    count++;
+                }
+            }
+            if (count < least) {
+                least = count;
+                cut = y;
+            }
+        }
+        if (cut < 8) {
+            return null;
+        }
+        final ByteProcessor top = new ByteProcessor(w, cut);
+        top.setValue(255);
+        top.fill();
+        for (int y = 0; y < cut; y++) {
+            for (int x = 0; x < w; x++) {
+                top.set(x, y, ink.get(x, y));
+            }
+        }
+        return sixOrNine(top);
+    }
+
     static boolean isZero (ByteProcessor ink)
     {
         final int w = ink.getWidth();

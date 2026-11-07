@@ -629,6 +629,40 @@ public class SymbolsBuilderTest
     }
 
     @Test
+    public void inkInThePreviousKeySignIsNotASlash ()
+    {
+        // Tosti, five flats at 150 dpi: the D flat's bowl stands inside the G flat's slash window.
+        final java.awt.Rectangle wide = new java.awt.Rectangle(0, 0, 1000, 1000);
+        final ij.process.ByteProcessor allInk = new ij.process.ByteProcessor(1000, 1000);
+        allInk.setValue(0);
+        allInk.fill();
+        final java.awt.Rectangle signBox = new java.awt.Rectangle(80, 0, 24, 1000);
+        final ij.process.ByteProcessor signInk = new ij.process.ByteProcessor(24, 1000);
+        signInk.setValue(0);
+        signInk.fill();
+        final ij.process.ByteProcessor noInk = new ij.process.ByteProcessor(1000, 1000);
+        noInk.setValue(255);
+        noInk.fill();
+        final SymbolsBuilder.StemInk own = SymbolsBuilder.inkBesideStem(
+                staffPage(true, false), FLAT_BOX, flatGlyph(), IL);
+        final SymbolsBuilder.StemInk explained = SymbolsBuilder.inkBesideStem(
+                staffPage(true, false), FLAT_BOX, flatGlyph(), IL, signInk, signBox);
+        final SymbolsBuilder.StemInk unrelated = SymbolsBuilder.inkBesideStem(
+                staffPage(true, false), FLAT_BOX, flatGlyph(), IL, noInk, wide);
+
+        assertTrue(own.leftShare() >= 0.135);
+        assertTrue(explained.leftShare() < 0.035);
+        assertTrue(SymbolsBuilder.crossingVerdict(
+                org.audiveris.omr.glyph.Shape.QUARTER_FLAT, explained, false) == null);
+        // A previous glyph several signs wide is a merge (the sign and the next slash): no mask.
+        final java.awt.Rectangle merged = new java.awt.Rectangle(0, 0, 1000, 1000);
+        assertTrue(SymbolsBuilder.inkBesideStem(staffPage(true, false), FLAT_BOX, flatGlyph(), IL,
+                allInk, merged).leftShare() >= 0.135);
+        // A slash on rows the previous sign does not ink is still a slash.
+        assertTrue(unrelated.leftShare() >= 0.135);
+    }
+
+    @Test
     public void aLaterKeySignWithABarlineBesideItIsNoSign ()
     {
         // aghnia-3shriin: a repeat sign after the key, read as a third flat.

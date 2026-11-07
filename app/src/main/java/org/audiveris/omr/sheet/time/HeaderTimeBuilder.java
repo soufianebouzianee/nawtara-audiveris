@@ -406,6 +406,58 @@ public class HeaderTimeBuilder
         return null;
     }
 
+    //--------------//
+    // sixOrNineOf //
+    //--------------//
+    /**
+     * Tell 6 from 9 on the glyph's ink as printed on the page: staff removal can open the
+     * loop, so the original grey page inside the glyph's bounds is looked at first.
+     *
+     * @param glyph the numerator glyph, or a whole time glyph when {@code whole}
+     * @param whole true to judge the top number of a stacked whole glyph
+     * @return 6, 9 or null
+     */
+    private Integer sixOrNineOf (Glyph glyph,
+                                 boolean whole)
+    {
+        final Rectangle box = glyph.getBounds();
+        final ByteProcessor page = staff.getSystem().getSheet().getPicture()
+                .getSource(Picture.SourceKey.GRAY);
+        final List<ByteProcessor> inks = new ArrayList<>();
+
+        if (page != null) {
+            final ByteProcessor crop = new ByteProcessor(box.width, box.height);
+            crop.setValue(255);
+            crop.fill();
+
+            for (int y = 0; y < box.height; y++) {
+                for (int x = 0; x < box.width; x++) {
+                    final int px = box.x + x;
+                    final int py = box.y + y;
+
+                    if ((px >= 0) && (py >= 0) && (px < page.getWidth())
+                            && (py < page.getHeight()) && (page.get(px, py) < 128)) {
+                        crop.set(x, y, 0);
+                    }
+                }
+            }
+
+            inks.add(crop);
+        }
+
+        inks.add(glyph.getBuffer());
+
+        for (ByteProcessor ink : inks) {
+            final Integer verdict = whole ? TwoDigitTime.topSixOrNine(ink) : TwoDigitTime.sixOrNine(ink);
+
+            if (verdict != null) {
+                return verdict;
+            }
+        }
+
+        return null;
+    }
+
     //-------------//
     // processHalf //
     //-------------//
@@ -576,8 +628,17 @@ public class HeaderTimeBuilder
                     Grades.timeMinGrade / Grades.intrinsicRatio,
                     null);
 
+            // The classifier takes a bold printed 9 for a 6: the loop's side on the ink decides.
+            final Integer loop = (half == NUM) ? sixOrNineOf(glyph, false) : null;
+
             for (Evaluation eval : evals) {
-                final Shape shape = eval.shape;
+                Shape shape = eval.shape;
+
+                if (loop != null && shape == Shape.TIME_SIX && loop == 9) {
+                    shape = Shape.TIME_NINE;
+                } else if (loop != null && shape == Shape.TIME_NINE && loop == 6) {
+                    shape = Shape.TIME_SIX;
+                }
 
                 if (halfShapes.contains(shape)) {
                     final double grade = Grades.intrinsicRatio * eval.grade;
@@ -709,6 +770,12 @@ public class HeaderTimeBuilder
                 final Shape shape = eval.shape;
 
                 if (wholeShapes.contains(shape)) {
+                    // A whole 6/8 or 6/4 glyph whose numerator is really a 9 is not that shape.
+                    if ((shape == Shape.TIME_SIX_EIGHT || shape == Shape.TIME_SIX_FOUR)
+                            && Integer.valueOf(9).equals(sixOrNineOf(glyph, true))) {
+                        continue;
+                    }
+
                     final double grade = Grades.intrinsicRatio * eval.grade;
                     logger.debug("   WHOLE eval {} for glyph#{}", eval, glyph.getId());
 

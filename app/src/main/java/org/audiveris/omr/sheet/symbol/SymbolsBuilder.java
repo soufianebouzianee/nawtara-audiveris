@@ -48,6 +48,7 @@ import org.audiveris.omr.sheet.Staff;
 import org.audiveris.omr.sheet.SystemInfo;
 import org.audiveris.omr.sheet.grid.LineInfo;
 import org.audiveris.omr.sig.SIGraph;
+import org.audiveris.omr.sig.inter.AbstractFlagInter;
 import org.audiveris.omr.sig.inter.AlterInter;
 import org.audiveris.omr.sig.inter.HeadInter;
 import org.audiveris.omr.sig.inter.Inter;
@@ -57,6 +58,7 @@ import org.audiveris.omr.sig.inter.SmallChordInter;
 import org.audiveris.omr.sig.inter.StemInter;
 import org.audiveris.omr.sig.inter.SlurInter;
 import org.audiveris.omr.sig.relation.AlterHeadRelation;
+import org.audiveris.omr.sig.relation.BeamStemRelation;
 import org.audiveris.omr.sig.relation.Exclusion;
 import org.audiveris.omr.sig.relation.KeyAltersRelation;
 import org.audiveris.omr.util.Dumping;
@@ -96,6 +98,11 @@ public class SymbolsBuilder
     private static final Constants constants = new Constants();
 
     private static final Logger logger = LoggerFactory.getLogger(SymbolsBuilder.class);
+
+    /** Accidentals a note can carry: none of them may be read from a flag on a stem. */
+    private static final EnumSet<Shape> NOTE_ACCIDENTALS = EnumSet.of(Shape.FLAT, Shape.NATURAL,
+            Shape.SHARP, Shape.DOUBLE_SHARP, Shape.DOUBLE_FLAT, Shape.QUARTER_FLAT,
+            Shape.QUARTER_SHARP);
 
     //~ Instance fields ----------------------------------------------------------------------------
 
@@ -375,14 +382,13 @@ public class SymbolsBuilder
         final SIGraph sig = system.getSig();
         final List<Inter> createdInters = new ArrayList<>();
 
-        // Some Arabic music fonts encode quarter-tone accidentals as private-use glyphs that
-        // are not present in the trainable Audiveris shape set. Detect these isolated glyphs
-        // from scale-normalized geometry and their note-head context, but preserve a confident
-        // standard accidental classification.
-        // The Arabic reading is one candidate among the classifier's, not a verdict: the
-        // evaluations below are still created, each in exclusion with it, so that a wrong
-        // promotion can lose to a better-supported interpretation during SIG reduction.
-        final Shape arabicAccidental = getArabicAccidental(glyph, closestStaff, evals);
+        // A sixteenth's flag hangs from its stem's free end as a stroke with a curve beside it,
+        // and the half-flat topology tests can take it for a slashed flat (Aho Da Elli Sar bar
+        // 12: the flag became a half-flat on the next G and the sixteenth a quarter). When the
+        // classifier itself votes a flag that hangs on a stem, this glyph is not an accidental.
+        final boolean flagOnStem = isFlagOnStem(glyph, evals);
+        final Shape arabicAccidental = flagOnStem ? null
+                : getArabicAccidental(glyph, closestStaff, evals);
 
         if (arabicAccidental != null) {
             final Double bowlY = wideQuarterFlatBowlY(glyph.getBuffer(),
@@ -422,9 +428,23 @@ public class SymbolsBuilder
             logger.debug("Detected Arabic {} glyph#{} as {}", arabicAccidental, glyph.getId(), alter);
         }
 
-        // Create one interpretation for each acceptable evaluation
+        // Create one interpretation for each acceptable evaluation.
+        // On a flag at a stem's end, an accidental vote is dropped and its grade goes to the
+        // flag votes: the glyph is that confident a symbol, and a flag is the one it can be
+        // (a photo's flag read FLAT 0.40 and FLAG_2 0.16, too weak to survive the reduction).
+        final double vetoedGrade = flagOnStem ? java.util.Arrays.stream(evals)
+                .filter(e -> NOTE_ACCIDENTALS.contains(e.shape))
+                .mapToDouble(e -> e.grade).max().orElse(0) : 0;
 
-        for (Evaluation eval : evals) {
+        for (Evaluation vote : evals) {
+            if (flagOnStem && NOTE_ACCIDENTALS.contains(vote.shape)) {
+                continue;
+            }
+
+            final Evaluation eval = (flagOnStem && ShapeSet.Flags.contains(vote.shape)
+                    && (vetoedGrade > vote.grade)) ? new Evaluation(vote.shape, vetoedGrade)
+                    : vote;
+
             try {
                 final Inter created = factory.create(eval, glyph, closestStaff);
 
@@ -440,6 +460,44 @@ public class SymbolsBuilder
                 logger.warn("Error in glyph evaluation " + ex, ex);
             }
         }
+    }
+
+    //--------------//
+    // isFlagOnStem //
+    //--------------//
+    /**
+     * Report whether one of the classifier's votes for this glyph is a flag that hangs on an
+     * unbeamed stem of the system, by the geometry a flag inter is linked with.
+     *
+     * @param glyph candidate glyph
+     * @param evals classifier evaluations of the glyph
+     * @return true for a flag at the free end of a stem without beam
+     */
+    private boolean isFlagOnStem (Glyph glyph,
+                                  Evaluation[] evals)
+    {
+        List<Inter> stems = null;
+
+        for (Evaluation eval : evals) {
+            if (!ShapeSet.Flags.contains(eval.shape)) {
+                continue;
+            }
+
+            if (stems == null) {
+                stems = system.getSig().inters(Shape.STEM);
+                Collections.sort(stems, org.audiveris.omr.sig.inter.Inters.byAbscissa);
+            }
+
+            // A beamed stem carries no flag: a sign flush against it (the slash of a half-flat
+            // across the stem of the eighth before its note) stays an accidental.
+            final Inter stem = AbstractFlagInter.linkedStem(glyph, eval.shape, system, stems);
+
+            if ((stem != null) && !system.getSig().hasRelation(stem, BeamStemRelation.class)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     //-----------------//
@@ -508,6 +566,9 @@ public class SymbolsBuilder
 
         if (candidate == Shape.QUARTER_FLAT) {
             if (hasConfidentStandardSharp(evals) || isReadAsRest(evals)) {
+                return null;
+            }
+            if (isRestWithoutBowl(evals, glyph.getBuffer(), staff.getSpecificInterline())) {
                 return null;
             }
             if (classifiedFlat && !confirmRightFlatSlash(glyph, staff)) {
@@ -1103,6 +1164,104 @@ public class SymbolsBuilder
         return (evals.length > 0)
                 && (ShapeSet.Rests.contains(evals[0].shape) || (evals[0].shape == Shape.NATURAL))
                 && (evals[0].grade >= REST_CONFIDENCE);
+    }
+
+    //-------------------//
+    // isRestWithoutBowl //
+    //-------------------//
+    /**
+     * Whether a glyph the classifier reads only as rests, however weakly, has no flat bowl at
+     * its foot. An eighth rest is a blob at its top with a thin tail below: on a thick photo it
+     * passes the half-flat topology, and Aho Da Elli Sar's bar 2 rest became a half-flat on the
+     * next A (rest votes 0.23 to 0.43, under {@link #REST_CONFIDENCE}). A flat or half-flat
+     * always has its bowl in its lower third, a rest's tail never is that wide; a real
+     * half-flat the classifier calls a weak rest (la-enta-habibi's C) keeps its bowl.
+     *
+     * @param evals     the classifier's evaluations, best first
+     * @param buffer    the glyph raster
+     * @param interline staff interline in pixels
+     * @return true for a rest-read glyph with a blob at its top and no bowl at its foot
+     */
+    static boolean isRestWithoutBowl (Evaluation[] evals,
+                                      ByteProcessor buffer,
+                                      double interline)
+    {
+        if ((evals.length == 0) || (buffer == null) || (interline <= 0)) {
+            return false;
+        }
+
+        for (Evaluation eval : evals) {
+            if (!ShapeSet.Rests.contains(eval.shape)) {
+                return false;
+            }
+        }
+
+        // A rest-read glyph must look like an eighth rest: its blob at the top. A thin stroke
+        // with neither blob nor bowl (the "(" of a bracketed flat, jadak-el-ghayth) keeps
+        // the old path, where the half-flat check wins over the weak rest reading.
+        return hasUpperBlob(buffer, interline) && !hasLowerBowl(buffer, interline);
+    }
+
+    /**
+     * Whether the upper third of a raster holds at least three rows of ink spanning 0.4
+     * interline or more, as an eighth rest's blob does.
+     *
+     * @param buffer    the glyph raster
+     * @param interline staff interline in pixels
+     * @return true when a blob-wide band is found at the top
+     */
+    static boolean hasUpperBlob (ByteProcessor buffer,
+                                 double interline)
+    {
+        return countWideRows(buffer, 0, buffer.getHeight() / 3, 0.4 * interline) >= 3;
+    }
+
+    private static int countWideRows (ByteProcessor buffer,
+                                      int yFrom,
+                                      int yTo,
+                                      double minSpan)
+    {
+        final int w = buffer.getWidth();
+        int wideRows = 0;
+
+        for (int y = yFrom; y < yTo; y++) {
+            int first = -1;
+            int last = -1;
+
+            for (int x = 0; x < w; x++) {
+                if (buffer.get(x, y) == FOREGROUND) {
+                    if (first < 0) {
+                        first = x;
+                    }
+
+                    last = x;
+                }
+            }
+
+            if ((first >= 0) && ((last - first + 1) >= minSpan)) {
+                wideRows++;
+            }
+        }
+
+        return wideRows;
+    }
+
+    /**
+     * Whether the lower third of a raster holds at least three rows of ink spanning 0.4
+     * interline or more, as a flat's bowl does. A flat whose stem merged into a note's stem
+     * keeps a bowl only 0.48 interline wide (aklk-mnin-yabta, interline 25); an eighth rest's
+     * tail is a single thin stroke.
+     *
+     * @param buffer    the glyph raster
+     * @param interline staff interline in pixels
+     * @return true when a bowl-wide band is found at the foot
+     */
+    static boolean hasLowerBowl (ByteProcessor buffer,
+                                 double interline)
+    {
+        final int h = buffer.getHeight();
+
+        return countWideRows(buffer, (2 * h) / 3, h, 0.4 * interline) >= 3;
     }
 
     /** Classifier grade from which a rest reading vetoes a half-flat (see isReadAsRest). */

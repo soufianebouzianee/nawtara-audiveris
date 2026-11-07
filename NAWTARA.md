@@ -45,6 +45,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-11-01 | A last line holding a single bar is no longer thrown away as too short to be a staff: it is kept when it lies below every other staff, lines up with the one above, and the page shows five continuous evenly spaced lines, a closing barline and notes |
 | 2026-11-05 | A time signature in the header of a later system is kept only when it reads with real confidence (mean grade 0.5): a key-signature flat at the start of a line was taken for a weak 6/8 and turned the rest of a 4/4 piece to 6/8 |
 | 2026-11-07 | A printed 9 in a header time signature is read as 9, not 6 (9/8 had been read as 6/8): the original page ink inside the digit decides, by which outer edge runs straight and where its loop lies; a later flat of a key signature no longer counts the previous sign's own ink as its slash, so a plain key flat is not read as a half-flat at low resolution |
+| 2026-11-07 (2) | A tie touching the bottom staff line is no longer read as a whole rest below the staff: a block rest whose ends lie under two heads of its measure is refused; a glyph that hangs on a stem as a flag (by Audiveris' own flag-stem geometry, an unbeamed stem) is not taken for an accidental; a glyph the classifier reads only as rests, with an eighth rest's blob at its top and no bowl at its foot, is not taken for a half-flat |
 
 Files modified or added (all under `app/`):
 
@@ -93,11 +94,13 @@ Files modified or added (all under `app/`):
 - `app/src/main/java/org/audiveris/omr/sheet/time/TimeBuilder.java`
 - `app/src/main/java/org/audiveris/omr/sheet/time/TimeColumn.java`
 - `app/src/main/java/org/audiveris/omr/sheet/time/TwoDigitTime.java`
+- `app/src/main/java/org/audiveris/omr/sig/inter/AbstractFlagInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/AbstractPitchedInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/AlterInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/HeadInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/KeyAlterInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/KeyInter.java`
+- `app/src/main/java/org/audiveris/omr/sig/inter/RestInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/SmallChordInter.java`
 - `app/src/main/java/org/audiveris/omr/sig/inter/TimeNumberInter.java`
 - `app/src/main/java/org/audiveris/omr/text/tesseract/TesseractOrder.java`
@@ -110,6 +113,7 @@ Files modified or added (all under `app/`):
 - `app/src/test/java/org/audiveris/omr/sheet/grid/ShortStaffCheckTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/grid/StaffProjectionRangeTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/MixedKeyOwnershipTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/symbol/RestWithoutBowlTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/SplitRestRecoveryTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/StackedFlagTemplateTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/StemFlagFragmentsTest.java`
@@ -122,6 +126,7 @@ Files modified or added (all under `app/`):
 - `app/src/test/java/org/audiveris/omr/sheet/time/TwoDigitTimeTest.java`
 - `app/src/test/java/org/audiveris/omr/sig/inter/AlterLinkPointTest.java`
 - `app/src/test/java/org/audiveris/omr/sig/inter/ArabicKeyShapeTest.java`
+- `app/src/test/java/org/audiveris/omr/sig/inter/RestBridgeTest.java`
 
 Everything else is Audiveris as published upstream at the commit above.
 

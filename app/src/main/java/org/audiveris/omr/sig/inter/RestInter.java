@@ -65,6 +65,10 @@ public class RestInter
 
     private static final Logger logger = LoggerFactory.getLogger(RestInter.class);
 
+    /** Rests drawn as a filled bar, which the flat middle of a tie can imitate. */
+    private static final java.util.EnumSet<Shape> BLOCK_RESTS = java.util.EnumSet.of(
+            Shape.WHOLE_REST, Shape.HALF_REST, Shape.BREVE_REST);
+
     //~ Constructors -------------------------------------------------------------------------------
 
     /**
@@ -214,6 +218,19 @@ public class RestInter
             }
         }
 
+        // A block rest (whole, half, breve) is a filled bar. The flat bottom of a tie or slur
+        // that runs under (or over) two heads, cut by a staff line, looks like one: Aho Da Elli
+        // Sar bar 5 got a phantom whole rest from the tie under its two G's. A rest never
+        // reaches under a head on both of its ends.
+        if (BLOCK_RESTS.contains(shape) && bridgesTwoHeads(glyphBox, measureChords,
+                system.getSheet().getScale())) {
+            if (glyph.isVip() || logger.isDebugEnabled()) {
+                logger.info("Discarded rest candidate glyph#{} bridging two heads", glyph.getId());
+            }
+
+            return null;
+        }
+
         // Pitch value WRT staff
         final double restPitch = restStaff.pitchPositionOf(centroid);
 
@@ -221,6 +238,86 @@ public class RestInter
         restStaff.addNote(restInter);
 
         return restInter;
+    }
+
+    //-----------------//
+    // bridgesTwoHeads //
+    //-----------------//
+    /**
+     * Report whether a glyph box runs from under (or over) one head to under (or over) another
+     * head, as the middle of a tie or slur does.
+     * <p>
+     * The left end must lie within the horizontal extent of a head (a little margin allowed)
+     * and the right end within that of a later head, and the box must stay vertically close to
+     * both heads.
+     *
+     * @param box    the rest candidate box
+     * @param chords head-chords of the rest's staff measure
+     * @param scale  sheet scale
+     * @return true when the box bridges two heads
+     */
+    static boolean bridgesTwoHeads (Rectangle box,
+                                    List<Inter> chords,
+                                    Scale scale)
+    {
+        final int margin = scale.toPixels(constants.bridgeHeadMargin);
+        final int maxDy = scale.toPixels(constants.bridgeMaxDy);
+        final List<Rectangle> heads = new ArrayList<>();
+
+        for (Inter chord : chords) {
+            if (chord instanceof HeadChordInter headChord) {
+                for (Inter note : headChord.getNotes()) {
+                    heads.add(note.getBounds());
+                }
+            }
+        }
+
+        return bridgesTwoHeads(box, heads, margin, maxDy);
+    }
+
+    /**
+     * Pixel version of {@link #bridgesTwoHeads(Rectangle, List, Scale)}.
+     *
+     * @param box    the rest candidate box
+     * @param heads  head boxes
+     * @param margin horizontal margin around a head's extent, in pixels
+     * @param maxDy  maximum vertical gap between the box and a head, in pixels
+     * @return true when the box bridges two heads
+     */
+    static boolean bridgesTwoHeads (Rectangle box,
+                                    List<Rectangle> heads,
+                                    int margin,
+                                    int maxDy)
+    {
+        final int left = box.x;
+        final int right = (box.x + box.width) - 1;
+        boolean leftHead = false;
+        boolean rightHead = false;
+
+        for (Rectangle head : heads) {
+            final int dy = Math.max(0, Math.max(head.y - (box.y + box.height),
+                    box.y - (head.y + head.height)));
+
+            if (dy > maxDy) {
+                continue;
+            }
+
+            final int headLeft = head.x - margin;
+            final int headRight = (head.x + head.width) - 1 + margin;
+            final boolean coversLeft = (left >= headLeft) && (left <= headRight);
+            final boolean coversRight = (right >= headLeft) && (right <= headRight);
+
+            // One head under both ends is not a bridge (a rest beside a chord is ruled out
+            // by the stuck check already)
+            if (coversLeft && !coversRight && (head.x + (head.width / 2) < box.x + (box.width / 2))) {
+                leftHead = true;
+            } else if (coversRight && !coversLeft
+                    && (head.x + (head.width / 2) > box.x + (box.width / 2))) {
+                rightHead = true;
+            }
+        }
+
+        return leftHead && rightHead;
     }
 
     //~ Inner Classes ------------------------------------------------------------------------------
@@ -239,5 +336,13 @@ public class RestInter
         private final Scale.Fraction minInterChordDx = new Scale.Fraction(
                 0.5,
                 "Minimum horizontal delta between two chords");
+
+        private final Scale.Fraction bridgeHeadMargin = new Scale.Fraction(
+                0.25,
+                "Horizontal margin around a head for a block rest end bridging two heads");
+
+        private final Scale.Fraction bridgeMaxDy = new Scale.Fraction(
+                1.0,
+                "Maximum vertical gap between a block rest bridging two heads and each head");
     }
 }

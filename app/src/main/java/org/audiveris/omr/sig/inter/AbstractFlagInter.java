@@ -378,6 +378,31 @@ public abstract class AbstractFlagInter
         return null;
     }
 
+    //------------//
+    // linkedStem //
+    //------------//
+    /**
+     * Report the stem a flag of this shape, made of this glyph, would hang on, by the same
+     * geometry {@link #createValidAdded} applies. Nothing is added to the SIG.
+     *
+     * @param glyph       candidate glyph
+     * @param shape       a flag shape
+     * @param system      the related system
+     * @param systemStems abscissa-ordered stems of the system
+     * @return the stem whose free end the glyph sits at as a flag would, or null
+     */
+    public static Inter linkedStem (Glyph glyph,
+                                    Shape shape,
+                                    SystemInfo system,
+                                    List<Inter> systemStems)
+    {
+        final AbstractFlagInter flag = shape.isSmallFlag() ? new SmallFlagInter(glyph, shape, 0.5)
+                : new FlagInter(glyph, shape, 0.5);
+        final Link link = flag.lookupLink(systemStems, system.getProfile());
+
+        return (link != null) ? link.partner : null;
+    }
+
     //--------------//
     // getFlagValue //
     //--------------//

@@ -48,6 +48,7 @@ import org.audiveris.omr.sheet.Staff;
 import org.audiveris.omr.sheet.SystemInfo;
 import org.audiveris.omr.sheet.grid.LineInfo;
 import org.audiveris.omr.sig.SIGraph;
+import org.audiveris.omr.sig.inter.ClefInter;
 import org.audiveris.omr.sig.inter.AbstractFlagInter;
 import org.audiveris.omr.sig.inter.AlterInter;
 import org.audiveris.omr.sig.inter.HeadInter;
@@ -441,6 +442,10 @@ public class SymbolsBuilder
                 continue;
             }
 
+            if (isClefBeforeMusic(vote.shape, glyph, closestStaff)) {
+                continue;
+            }
+
             final Evaluation eval = (flagOnStem && ShapeSet.Flags.contains(vote.shape)
                     && (vetoedGrade > vote.grade)) ? new Evaluation(vote.shape, vetoedGrade)
                     : vote;
@@ -558,6 +563,13 @@ public class SymbolsBuilder
         if (wideBowlY != null && wideQuarterFlatOnPage(
                 sheet.getPicture().getSource(Picture.SourceKey.BINARY), glyph.getBounds(),
                 glyph.getBuffer(), staff.getSpecificInterline())) {
+            candidate = Shape.QUARTER_FLAT;
+        }
+        // Sibelius's OpusSpecial half-flat is a flat turned over: its stem on the right, nothing
+        // crossing it. The classifier has no such shape (DIGIT_4 0.24 or no vote), so nothing
+        // above asks about it; it must not outvote a confident reading of anything else.
+        if ((candidate == null) && !hasConfidentVote(evals)
+                && isMirroredFlat(glyph.getBuffer(), staff.getSpecificInterline())) {
             candidate = Shape.QUARTER_FLAT;
         }
         if (candidate == null) {
@@ -1515,7 +1527,7 @@ public class SymbolsBuilder
     {
         if ((buffer == null) || (interline <= 0)) { return false; }
         final int w = buffer.getWidth(), h = buffer.getHeight();
-        if ((w < 6) || (w / interline < 0.4) || (w / interline >= 0.6)
+        if ((w < 6) || (w / interline < 0.4) || (w / interline >= 0.7)
                 || (h / interline < 2.2) || (h / interline > 3.6)
                 || (longStemClusters(buffer, 0.65) != 1)) { return false; }
         final int[] stem = stemColumns(buffer);
@@ -1564,6 +1576,115 @@ public class SymbolsBuilder
         }
         return (longStemClusters(original, 0.50) == 1)
                 && hasNarrowQuarterSharpTopology(original, interline);
+    }
+
+    /** Whether the classifier's best vote is a confident one, of any shape. */
+    private static boolean hasConfidentVote (Evaluation[] evals)
+    {
+        return (evals.length > 0) && (evals[0].grade >= REST_CONFIDENCE);
+    }
+
+    /**
+     * Whether a glyph is a mirrored flat, the half-flat of Sibelius's OpusSpecial font: a stem
+     * at its right edge, a bowl to the left of the stem's lower half, and nothing else. A digit
+     * 4, the shape the classifier most often calls it, has a crossbar passing the stem to the
+     * right and a diagonal in its upper left, and fails on both.
+     *
+     * @param buffer    glyph raster
+     * @param interline staff interline in pixels
+     * @return true for a mirrored flat
+     */
+    static boolean isMirroredFlat (ByteProcessor buffer, double interline)
+    {
+        if ((buffer == null) || (interline <= 0)) { return false; }
+        final int w = buffer.getWidth();
+        final int h = buffer.getHeight();
+        if ((w < 6) || (h < 20) || (w / interline < 0.45) || (w / interline > 1.2)
+                || (h / interline < 1.8) || (h / interline > 3.6)) { return false; }
+        int stemLeft = -1;
+        int stemRight = -1;
+        for (int x = w - 1; x >= 0; x--) {
+            int ink = 0;
+            for (int y = 0; y < h; y++) {
+                if (buffer.get(x, y) != BACKGROUND) { ink++; }
+            }
+            if (ink >= h * 0.6) {
+                if (stemRight < 0) { stemRight = x; }
+                stemLeft = x;
+            } else if (stemRight >= 0) {
+                break;
+            }
+        }
+        if ((stemRight < 0) || ((w - 1 - stemRight) > Math.max(2, interline * 0.15))
+                || ((stemRight - stemLeft + 1) > (interline * 0.5))) { return false; }
+        int rightOfStem = 0;
+        int upperLeft = 0;
+        int lowerLeft = 0;
+        int bowlRows = 0;
+        int inkRows = 0;
+        int hollowRows = 0;
+        final int minWhite = (int) Math.max(2, Math.ceil(interline * 0.12));
+        for (int y = 0; y < h; y++) {
+            int rowLeft = 0;
+            for (int x = 0; x < w; x++) {
+                if (buffer.get(x, y) == BACKGROUND) { continue; }
+                if (x > stemRight + 1) {
+                    rightOfStem++;
+                } else if (x < stemLeft - 1) {
+                    rowLeft++;
+                }
+            }
+            if (y < h / 3) { upperLeft += rowLeft; }
+            if (y >= h / 2) {
+                lowerLeft += rowLeft;
+                if (rowLeft >= interline * 0.3) { bowlRows++; }
+                if (rowLeft > 0) {
+                    inkRows++;
+                    if (hasWhiteRun(buffer, y, stemLeft, minWhite)) { hollowRows++; }
+                }
+            }
+        }
+        // A bowl is open inside: a note with its stem up has the same outline, solid.
+        return (rightOfStem == 0) && (upperLeft <= 0.04 * w * h)
+                && (lowerLeft >= 0.21 * interline * interline) && (bowlRows >= h * 0.15)
+                && (hollowRows >= inkRows * 0.25);
+    }
+
+    /** Whether this row has a run of background between its first ink and the stem. */
+    private static boolean hasWhiteRun (ByteProcessor buffer, int y, int stemLeft, int minRun)
+    {
+        int x = 0;
+        while ((x < stemLeft) && (buffer.get(x, y) == BACKGROUND)) { x++; }
+        int run = 0;
+        for (; x < stemLeft; x++) {
+            run = (buffer.get(x, y) == BACKGROUND) ? (run + 1) : 0;
+            if (run >= minRun) { return true; }
+        }
+        return false;
+    }
+
+    /**
+     * Whether a bass clef vote stands, on a staff that opens with a treble clef, before any note
+     * of that staff. A clef change has music before it. There, a photographed time signature
+     * read as one glyph (10/8 and 4/4 voted F_CLEF 0.52 and 0.75) would play the first bars of
+     * the system two octaves and a third low with no doubt raised.
+     */
+    private boolean isClefBeforeMusic (Shape shape, Glyph glyph, Staff staff)
+    {
+        if ((shape != Shape.F_CLEF) && (shape != Shape.F_CLEF_SMALL)) { return false; }
+        if ((staff.getHeader() == null) || (staff.getHeader().clef == null)
+                || (staff.getHeader().clef.getKind() != ClefInter.ClefKind.TREBLE)) { return false; }
+        final List<Integer> heads = new ArrayList<>();
+        for (Inter inter : system.getSig().inters(HeadInter.class)) {
+            if (inter.getStaff() == staff) { heads.add(inter.getBounds().x); }
+        }
+        return noHeadBefore(glyph.getBounds().x, heads);
+    }
+
+    /** Whether no head of the staff starts left of the given abscissa. */
+    static boolean noHeadBefore (int x, List<Integer> headLefts)
+    {
+        return headLefts.stream().noneMatch(left -> left < x);
     }
 
     /** Confirm the wide sign's stem and slash in original, pre-removal binary ink. */

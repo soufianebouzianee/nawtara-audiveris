@@ -46,6 +46,7 @@ as they are printed, handwritten, scanned and photographed.
 | 2026-11-05 | A time signature in the header of a later system is kept only when it reads with real confidence (mean grade 0.5): a key-signature flat at the start of a line was taken for a weak 6/8 and turned the rest of a 4/4 piece to 6/8 |
 | 2026-11-07 | A printed 9 in a header time signature is read as 9, not 6 (9/8 had been read as 6/8): the original page ink inside the digit decides, by which outer edge runs straight and where its loop lies; a later flat of a key signature no longer counts the previous sign's own ink as its slash, so a plain key flat is not read as a half-flat at low resolution |
 | 2026-11-07 (2) | A tie touching the bottom staff line is no longer read as a whole rest below the staff: a block rest whose ends lie under two heads of its measure is refused; a glyph that hangs on a stem as a flag (by Audiveris' own flag-stem geometry, an unbeamed stem) is not taken for an accidental; a glyph the classifier reads only as rests, with an eighth rest's blob at its top and no bowl at its foot, is not taken for a half-flat |
+| 2026-11-09 | Sibelius OpusSpecial's half-flat, drawn as a mirrored flat with a hollow bowl, is read on images; the width gap between the two half-sharp rules is closed; a bass clef vote before any note on a treble staff is refused, because a stacked time signature could be taken for one |
 
 Files modified or added (all under `app/`):
 
@@ -112,7 +113,10 @@ Files modified or added (all under `app/`):
 - `app/src/test/java/org/audiveris/omr/sheet/grid/BarAccidentalInkTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/grid/ShortStaffCheckTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/grid/StaffProjectionRangeTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/symbol/ClefBeforeMusicTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/symbol/MirroredFlatTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/MixedKeyOwnershipTest.java`
+- `app/src/test/java/org/audiveris/omr/sheet/symbol/NarrowQuarterSharpWidthTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/RestWithoutBowlTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/SplitRestRecoveryTest.java`
 - `app/src/test/java/org/audiveris/omr/sheet/symbol/StackedFlagTemplateTest.java`

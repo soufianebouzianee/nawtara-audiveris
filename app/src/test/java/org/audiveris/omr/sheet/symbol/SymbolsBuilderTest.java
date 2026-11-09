@@ -233,7 +233,7 @@ public class SymbolsBuilderTest
         assertTrue(SymbolsBuilder.hasNarrowQuarterSharpTopology(sign, 25));
         assertTrue(SymbolsBuilder.isNarrowQuarterSharpOnPage(sign, box, sign, 25));
         assertFalse(SymbolsBuilder.isNarrowQuarterSharpOnPage(null, box, sign, 25));
-        assertFalse(SymbolsBuilder.hasNarrowQuarterSharpTopology(sign, 20));
+        assertFalse(SymbolsBuilder.hasNarrowQuarterSharpTopology(sign, 18));
         final ByteProcessor natural = (ByteProcessor) sign.duplicate();
         vertical(natural, 1, 8, 60);
         assertFalse(SymbolsBuilder.isNarrowQuarterSharpOnPage(natural, box, sign, 25));

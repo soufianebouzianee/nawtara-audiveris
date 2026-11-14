@@ -977,65 +977,22 @@ public class SymbolsBuilder
                 continue;
             }
 
-            final boolean classifiedFlat = keyAlter.getShape() == Shape.FLAT;
-            Shape candidate = getArabicAccidentalShape(glyph, keyAlter.getStaff(), classifiedFlat);
-            if ((keyAlter.getShape() == Shape.SHARP)
-                    && isQuarterSharpOnPage(sheet.getPicture().getSource(Picture.SourceKey.GRAY),
-                            glyph.getBounds(), glyph.getBuffer(),
-                            keyAlter.getStaff().getSpecificInterline())) {
-                candidate = Shape.QUARTER_SHARP;
-            }
-            if ((keyAlter.getShape() == Shape.SHARP)
-                    && isSlantedQuarterSharpOnPage(sheet.getPicture().getSource(Picture.SourceKey.GRAY),
-                            glyph.getBounds(), glyph.getBuffer(),
-                            keyAlter.getStaff().getSpecificInterline())) {
-                candidate = Shape.QUARTER_SHARP;
-            }
-            StemInk ink = null;
-            final boolean first = isFirstOfKey(keyAlter);
+            final KeyVerdict verdict = keyVerdict(keyAlter, glyph);
+            Shape candidate = verdict.candidate();
+            final StemInk ink = verdict.ink();
+            final boolean first = verdict.first();
 
-            if (classifiedFlat) {
-                // The glyph alone cannot tell: staff removal cuts off a slash that touches a
-                // line, and damage beside a stem can look like one. The page can. It is read in
-                // grey at a fixed level, not from the binary source: on a blurred scan that
-                // source keeps a staff line's grey halo, five or six pixels thick, and a flat's
-                // stem halo, and both then read as ink beside the stem.
-                final ByteProcessor page = sheet.getPicture().getSource(Picture.SourceKey.GRAY);
-
-                if (page != null) {
-                    ink = inkBesideStem(
-                            page,
-                            glyph.getBounds(),
-                            glyph.getBuffer(),
-                            keyAlter.getStaff().getSpecificInterline(),
-                            previousSign(keyAlter) == null ? null
-                                    : previousSign(keyAlter).getBuffer(),
-                            previousSign(keyAlter) == null ? null
-                                    : previousSign(keyAlter).getBounds());
-                    final Shape before = candidate;
-                    candidate = crossingVerdict(candidate, ink, first);
-
-                    // Leland's bakiye half-flat slashes mostly right of its stem: its left share
-                    // can fall between the false (0.023 and less) and true (0.064 and more)
-                    // flats measured. There, slash ink right of the stem that the staff lines do
-                    // not explain keeps the half-flat. Only for the key's first sign, as for
-                    // SLASH_PRESENT: a later plain flat (2alo-tra's A-flat) passed it.
-                    if ((before == Shape.QUARTER_FLAT) && (candidate == null) && first
-                            && (ink.leftShare() > SLASH_GAP_LOW)
-                            && hasSlashRightOfStem(glyph.getBuffer())
-                            && hasNonStaffFlatSlash(page, glyph.getBounds(), glyph.getBuffer(),
-                                    keyAlter.getStaff().getSpecificInterline(),
-                                    keyAlter.getStaff().getLines())) {
-                        candidate = Shape.QUARTER_FLAT;
-                    }
-                }
-            }
-
-            // A key already has the established page-side crossing verdict above. Preserve
-            // that positive evidence when staff removal clipped the slash on its right.
-            if ((candidate == Shape.QUARTER_FLAT)
-                    && ((ink == null) || (ink.leftShare() < SLASH_ABSENT))
-                    && !confirmRightFlatSlash(glyph, keyAlter.getStaff())) {
+            // The measure beside the stem alone promoted this first flat. On a photograph the
+            // top line's staff lines come out thick and its signs tilted, and both leave ink
+            // left of the stem (aho-da-elli-sar captures: 0.20 to 0.37 on line 1, where the
+            // same printed B flat measures 0.00 to 0.11 on every later line). When the other
+            // staves of the page read their first key sign, same clef and pitch, as a plain
+            // flat, and none as a half-flat, the page prints a flat.
+            if ((candidate == Shape.QUARTER_FLAT) && verdict.byCrossingOnly()
+                    && pageReadsPlainFlat(keyAlter)) {
+                logger.info(
+                        "Kept key flat glyph#{}: every other staff reads this sign as a flat",
+                        glyph.getId());
                 candidate = null;
             }
 
@@ -1070,6 +1027,163 @@ public class SymbolsBuilder
                 keyAlter.setPitch(pitch);
             }
         }
+    }
+
+    //------------//
+    // KeyVerdict //
+    //------------//
+    /**
+     * What the glyph and the page say of one key sign, before the page's other staves are
+     * consulted.
+     *
+     * @param candidate      the corrected shape, or null to keep the read one
+     * @param ink            the measure beside a flat's stem, or null
+     * @param first          whether the sign is its key's first
+     * @param byCrossingOnly whether a flat became a half-flat by the measure beside its stem
+     *                       alone, its glyph showing no half-flat topology or right slash
+     */
+    private record KeyVerdict (Shape candidate, StemInk ink, boolean first,
+                               boolean byCrossingOnly)
+    {
+    }
+
+    //------------//
+    // keyVerdict //
+    //------------//
+    /** Decide one key sign from its glyph and the page around it. No side effect. */
+    private KeyVerdict keyVerdict (KeyAlterInter keyAlter,
+                                   Glyph glyph)
+    {
+        final boolean classifiedFlat = keyAlter.getShape() == Shape.FLAT;
+        Shape candidate = getArabicAccidentalShape(glyph, keyAlter.getStaff(), classifiedFlat);
+        final Shape topology = candidate;
+        if ((keyAlter.getShape() == Shape.SHARP)
+                && isQuarterSharpOnPage(sheet.getPicture().getSource(Picture.SourceKey.GRAY),
+                        glyph.getBounds(), glyph.getBuffer(),
+                        keyAlter.getStaff().getSpecificInterline())) {
+            candidate = Shape.QUARTER_SHARP;
+        }
+        if ((keyAlter.getShape() == Shape.SHARP)
+                && isSlantedQuarterSharpOnPage(sheet.getPicture().getSource(Picture.SourceKey.GRAY),
+                        glyph.getBounds(), glyph.getBuffer(),
+                        keyAlter.getStaff().getSpecificInterline())) {
+            candidate = Shape.QUARTER_SHARP;
+        }
+        StemInk ink = null;
+        final boolean first = isFirstOfKey(keyAlter);
+
+        if (classifiedFlat) {
+            // The glyph alone cannot tell: staff removal cuts off a slash that touches a
+            // line, and damage beside a stem can look like one. The page can. It is read in
+            // grey at a fixed level, not from the binary source: on a blurred scan that
+            // source keeps a staff line's grey halo, five or six pixels thick, and a flat's
+            // stem halo, and both then read as ink beside the stem.
+            final ByteProcessor page = sheet.getPicture().getSource(Picture.SourceKey.GRAY);
+
+            if (page != null) {
+                ink = inkBesideStem(
+                        page,
+                        glyph.getBounds(),
+                        glyph.getBuffer(),
+                        keyAlter.getStaff().getSpecificInterline(),
+                        previousSign(keyAlter) == null ? null
+                                : previousSign(keyAlter).getBuffer(),
+                        previousSign(keyAlter) == null ? null
+                                : previousSign(keyAlter).getBounds());
+                final Shape before = candidate;
+                candidate = crossingVerdict(candidate, ink, first);
+
+                // Leland's bakiye half-flat slashes mostly right of its stem: its left share
+                // can fall between the false (0.023 and less) and true (0.064 and more)
+                // flats measured. There, slash ink right of the stem that the staff lines do
+                // not explain keeps the half-flat. Only for the key's first sign, as for
+                // SLASH_PRESENT: a later plain flat (2alo-tra's A-flat) passed it.
+                if ((before == Shape.QUARTER_FLAT) && (candidate == null) && first
+                        && (ink.leftShare() > SLASH_GAP_LOW)
+                        && hasSlashRightOfStem(glyph.getBuffer())
+                        && hasNonStaffFlatSlash(page, glyph.getBounds(), glyph.getBuffer(),
+                                keyAlter.getStaff().getSpecificInterline(),
+                                keyAlter.getStaff().getLines())) {
+                    candidate = Shape.QUARTER_FLAT;
+                }
+            }
+        }
+
+        // A key already has the established page-side crossing verdict above. Preserve
+        // that positive evidence when staff removal clipped the slash on its right.
+        if ((candidate == Shape.QUARTER_FLAT)
+                && ((ink == null) || (ink.leftShare() < SLASH_ABSENT))
+                && !confirmRightFlatSlash(glyph, keyAlter.getStaff())) {
+            candidate = null;
+        }
+
+        final boolean byCrossingOnly = (keyAlter.getShape() == Shape.FLAT) && (topology == null)
+                && (candidate == Shape.QUARTER_FLAT);
+
+        return new KeyVerdict(candidate, ink, first, byCrossingOnly);
+    }
+
+    //--------------------//
+    // pageReadsPlainFlat //
+    //--------------------//
+    /**
+     * Whether the other staves of this page read this key sign as a plain flat.
+     * <p>
+     * Each other staff with the same header clef whose key starts at this sign's pitch is
+     * asked: a first sign already corrected to a half-flat, or one its own glyph and page
+     * would correct, answers no at once. At least two plain flats are needed. Systems may be
+     * processed in parallel: the other staves' verdicts are recomputed, never taken from a
+     * correction that may or may not have run yet, so the answer does not depend on order.
+     *
+     * @param keyAlter the first sign of a staff's key, read as a flat
+     * @return true when two or more other staves read a plain flat there and none a half-flat
+     */
+    private boolean pageReadsPlainFlat (KeyAlterInter keyAlter)
+    {
+        final Staff staff = keyAlter.getStaff();
+        final ClefInter clef = (staff.getHeader() != null) ? staff.getHeader().clef : null;
+
+        if (clef == null) {
+            return false;
+        }
+
+        int plain = 0;
+
+        for (Staff other : sheet.getStaffManager().getStaves()) {
+            if ((other == staff) || (other.getHeader() == null)) {
+                continue;
+            }
+
+            final ClefInter otherClef = other.getHeader().clef;
+            final KeyInter otherKey = other.getHeader().key;
+
+            if ((otherClef == null) || (otherClef.getKind() != clef.getKind())
+                    || (otherKey == null) || otherKey.getMembers().isEmpty()) {
+                continue;
+            }
+
+            if (!(otherKey.getMembers().get(0) instanceof KeyAlterInter alter)
+                    || (alter.getGlyph() == null)
+                    || (alter.getIntegerPitch() != keyAlter.getIntegerPitch())) {
+                continue;
+            }
+
+            if (alter.getShape() == Shape.QUARTER_FLAT) {
+                return false;
+            }
+
+            if (alter.getShape() != Shape.FLAT) {
+                continue;
+            }
+
+            if (keyVerdict(alter, alter.getGlyph()).candidate() == Shape.QUARTER_FLAT) {
+                return false;
+            }
+
+            plain++;
+        }
+
+        return plain >= 2;
     }
 
     //--------------//

@@ -166,6 +166,9 @@ public class StaffProjector
     /** Minimum absolute derivative to detect peak sides. */
     private int derivativeThreshold;
 
+    /** Start of the window sampled before the left end was measured further (fix 1). */
+    private int sampledLeft;
+
     /** Initial brace peak, if any. */
     private StaffPeak bracePeak;
 
@@ -329,6 +332,21 @@ public class StaffProjector
                 // There must be a significant blank just before first peak
                 Blank blank = selectBlank(LEFT, firstPeak.getStart(), params.minSmallBlankWidth);
 
+                if ((blank != null) && (blank.stop < sampledLeft)) {
+                    // In the margin measured beyond the sampled window (fix 1), a small break
+                    // in the lines is not the staff end: require a standard blank there, as
+                    // the branch without a start bar does.
+                    blank = selectBlank(LEFT, firstPeak.getStart(), params.minStandardBlankWidth);
+                }
+
+                if ((blank == null) && (sampledLeft >= params.minSmallBlankWidth)
+                        && (firstPeak.getStart() > sampledLeft)) {
+                    // Ink measured all the way to the image border: keep the left end the
+                    // sampled window gave before (its unsampled margin read as one blank),
+                    // so this staff never starts further right than without fix 1.
+                    blank = new Blank(0, sampledLeft - 1);
+                }
+
                 if (blank != null) {
                     int gap = firstPeak.getStart() - 1 - blank.stop;
 
@@ -339,6 +357,23 @@ public class StaffProjector
                     }
                 } else {
                     logger.warn("Staff#{} no clear end on LEFT", staff.getId());
+                }
+            } else if (staff.getLineCount() == 5) {
+                // No start bar: the left end still comes from long line filaments only.
+                // On photos these break in the crowded header (clef, key, time) and start
+                // inside the first measure. If the measured lines run on further left
+                // to a standard blank, the staff starts at that blank.
+                final int linesLeft = staff.getAbscissa(LEFT);
+                final Blank blank = selectBlank(LEFT, linesLeft, params.minStandardBlankWidth);
+
+                if (blank != null) {
+                    final int gap = linesLeft - 1 - blank.stop;
+
+                    if (gap > params.maxLeftExtremum) {
+                        logger.debug("Staff#{} LEFT set at blank {} (vs {})",
+                                staff.getId(), blank.stop + 1, linesLeft);
+                        staff.setAbscissa(LEFT, blank.stop + 1);
+                    }
                 }
             }
         } catch (Exception ex) {
@@ -436,16 +471,26 @@ public class StaffProjector
                 ? staff.getLastLine()
                 : staff.getMidLine().yTranslated(+getBarlineHeight() / 2);
         final int dx = params.staffAbscissaMargin;
-        final int xMin = sheet.xClamp(staff.getAbscissa(LEFT) - dx);
+        final int initialLeft = sheet.xClamp(staff.getAbscissa(LEFT) - dx);
         final int initialRight = sheet.xClamp(staff.getAbscissa(RIGHT) + dx);
         // Pixels beyond the old sampling window were zero-filled, not measured blanks.
         // Only continue a five-line staff whose ink reaches that window, and stop at
         // the first measured wide blank so side-by-side staves remain separate.
+        // On the left this matters for photos: line filaments broken in the header put
+        // the rough staff start inside the first measure, and the zero-filled region
+        // left of the window was then taken as the blank before the lines.
+        final int xMin = staff.getLineCount() == 5
+                ? StaffProjectionRange.leftLimit(initialLeft, 0,
+                        params.blankThreshold, params.minWideBlankWidth,
+                        x -> projectionCount(x, firstLine, lastLine))
+                : initialLeft;
         final int xMax = staff.getLineCount() == 5
                 ? StaffProjectionRange.rightLimit(initialRight, sheet.getWidth() - 1,
                         params.blankThreshold, params.minWideBlankWidth,
                         x -> projectionCount(x, firstLine, lastLine))
                 : initialRight;
+
+        sampledLeft = initialLeft;
 
         // Populating projection data
         for (int x = xMin; x <= xMax; x++) {
@@ -453,7 +498,8 @@ public class StaffProjector
 
             projection.increment(x, count);
 
-            if (x > xMin) {
+            // Derivatives as before: over the sampled window only
+            if (x > Math.max(xMin, initialLeft)) {
                 derivatives.add(Math.abs(projection.getDerivative(x)));
             }
         }
@@ -817,6 +863,8 @@ public class StaffProjector
             xMin = Math.max(minLeft, 0);
         }
 
+        // Same window as findPeaks: no brace in the margin measured beyond the sampled window
+        final int xLow = Math.max(xMin, sampledLeft);
         int braceStop = -1;
         int braceStart = -1;
         int bestValue = 0;
@@ -824,7 +872,7 @@ public class StaffProjector
 
         // Browse from right to left
         // First finding valley left of bar, then brace peak if any
-        for (int x = maxRight; x >= xMin; x--) {
+        for (int x = maxRight; x >= xLow; x--) {
             int value = projection.getValue(x);
 
             if (value >= minValue) {
@@ -872,7 +920,9 @@ public class StaffProjector
     private void findPeaks ()
     {
         final Blank leftBlank = endingBlanks.get(LEFT);
-        final int xMin = (leftBlank != null) ? leftBlank.stop : 0;
+        // Ink measured left of the sampled window only places the staff start: a peak there
+        // (page shadow, gutter, a neighbor's barline) could join staves into a system.
+        final int xMin = Math.max((leftBlank != null) ? leftBlank.stop : 0, sampledLeft);
 
         final Blank rightBlank = endingBlanks.get(RIGHT);
         final int xMax = (rightBlank != null) ? rightBlank.start : (sheet.getWidth() - 1);

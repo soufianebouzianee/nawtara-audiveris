@@ -62,4 +62,39 @@ public class StaffProjectionRangeTest
         assertEquals(104, StaffProjectionRange.rightLimit(100, 200, 4, 3,
                 x -> x >= 102 ? 4 : 5));
     }
+
+    @Test public void leftWindowMeasuresBackToThePrintedStaffStart ()
+    {
+        // Lines from x=30 to the right; the rough start at 120 leaves a window from 100.
+        int start = StaffProjectionRange.leftLimit(100, 0, 4, 20, x -> x >= 30 ? 10 : 0);
+        assertEquals("Include the measured margin before the real start", 10, start);
+    }
+
+    @Test public void leftWindowAlreadyInTheMarginDoesNotExtend ()
+    {
+        AtomicInteger calls = new AtomicInteger();
+        assertEquals(100, StaffProjectionRange.leftLimit(100, 0, 4, 20, x -> {
+            calls.incrementAndGet(); return x >= 150 ? 10 : 0;
+        }));
+        assertEquals(1, calls.get());
+    }
+
+    @Test public void leftShortBreakIsCrossedButWideGapStopsBeforeNeighbor ()
+    {
+        AtomicInteger last = new AtomicInteger(Integer.MAX_VALUE);
+        int start = StaffProjectionRange.leftLimit(200, 0, 4, 20, x -> {
+            last.set(Math.min(last.get(), x));
+            return (x >= 188 && x <= 190) || (x >= 91 && x <= 120) ? 0 : 10;
+        });
+        assertEquals(101, start);
+        assertEquals("Never sample a neighboring staff beyond a real wide blank", 101, last.get());
+    }
+
+    @Test public void leftInkToImageBorderIsClamped ()
+    {
+        assertEquals(0, StaffProjectionRange.leftLimit(20, 0, 4, 20, x -> 10));
+        assertEquals(0, StaffProjectionRange.leftLimit(0, 0, 4, 20, x -> {
+            fail("No out-of-image sampling"); return 0;
+        }));
+    }
 }
